@@ -231,20 +231,18 @@ jobs:
           VERSION=${{ needs.get-version.outputs.version }}
           VERSION_NUM=${VERSION#v}  # Remove 'v' prefix
           
-          # Extract changelog section for this version
-          # Look for ## [X.X.X] and capture until next ## [ or end of file
-          CHANGELOG=$(awk -v ver="$VERSION_NUM" '
-            /^## \[/ {
-              if (found) exit
-              if ($0 ~ "\\[" ver "\\]") found=1
-              next
-            }
-            found { print }
-          ' CHANGELOG.md)
+          echo "Looking for version: $VERSION_NUM"
+          
+          # Extract changelog section for this version using sed
+          # Find the line with version, then print until next version header or end
+          CHANGELOG=$(sed -n "/^## \[$VERSION_NUM\]/,/^## \[/{ /^## \[$VERSION_NUM\]/d; /^## \[/d; p; }" CHANGELOG.md)
           
           # If no changelog found, use default message
           if [ -z "$CHANGELOG" ]; then
+            echo "No changelog found for version $VERSION_NUM"
             CHANGELOG="See CHANGELOG.md for details."
+          else
+            echo "Found changelog content"
           fi
           
           # Save to file for multiline support
