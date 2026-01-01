@@ -13,13 +13,23 @@ Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account 
 
 ### [Download](https://github.com/zarzet/SpotiFLAC-Mobile/releases)
 
+## Features
+
+- Download tracks, albums, and playlists from Spotify links
+- True lossless FLAC quality from Tidal, Qobuz & Amazon Music
+- Material Expressive 3 design with dynamic colors
+- High performance rendering with Impeller (Vulkan)
+- Concurrent downloads up to 3 simultaneous
+- Real-time download progress tracking
+- Download notifications
+
 ## Screenshots
 
 <p align="center">
-  <img src="assets/images/Screenshot_20260101-210622_SpotiFLAC.png" width="200" />
-  <img src="assets/images/photo_2026-01-01_23-56-11.jpg" width="200" />
-  <img src="assets/images/Screenshot_20260101-210653_SpotiFLAC.png" width="200" />
-  <img src="assets/images/photo_2026-01-01_23-44-06.jpg" width="200" />
+  <img src="assets/images/photo_2026-01-02_02-35-09.jpg" width="200" />
+  <img src="assets/images/photo_2026-01-02_02-35-34.jpg" width="200" />
+  <img src="assets/images/photo_2026-01-02_02-35-37.jpg" width="200" />
+  <img src="assets/images/photo_2026-01-02_02-36-23.jpg" width="200" />
 </p>
 
 ## Other project

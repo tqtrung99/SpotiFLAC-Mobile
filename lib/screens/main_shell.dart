@@ -4,7 +4,7 @@ import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/screens/home_tab.dart';
 import 'package:spotiflac_android/screens/queue_tab.dart';
-import 'package:spotiflac_android/screens/settings_tab.dart';
+import 'package:spotiflac_android/screens/settings/settings_tab.dart';
 import 'package:spotiflac_android/services/update_checker.dart';
 import 'package:spotiflac_android/widgets/update_dialog.dart';
 
@@ -19,14 +19,6 @@ class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
   late PageController _pageController;
   bool _hasCheckedUpdate = false;
-  bool _isAnimating = false;
-
-  // Cache tab widgets to prevent rebuilds
-  final List<Widget> _tabs = const [
-    HomeTab(),
-    QueueTab(),
-    SettingsTab(),
-  ];
 
   @override
   void initState() {
@@ -64,14 +56,13 @@ class _MainShellState extends ConsumerState<MainShell> {
   }
 
   void _onNavTap(int index) {
-    if (_currentIndex != index && !_isAnimating) {
-      _isAnimating = true;
+    if (_currentIndex != index) {
       setState(() => _currentIndex = index);
       _pageController.animateToPage(
         index,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      ).then((_) => _isAnimating = false);
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
     }
   }
 
@@ -83,33 +74,23 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    final queueState = ref.watch(downloadQueueProvider);
+    final queueState = ref.watch(downloadQueueProvider.select((s) => s.queuedCount));
 
     return Scaffold(
-      appBar: AppBar(
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Image.asset(
-              'assets/images/logo.png',
-              width: 40,
-              height: 40,
-            ),
-          ),
-        ),
-        title: const Text('SpotiFLAC'),
-      ),
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,
-        physics: const ClampingScrollPhysics(),
-        children: _tabs,
+        physics: const BouncingScrollPhysics(),
+        children: const [
+          HomeTab(),
+          QueueTab(),
+          SettingsTab(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _onNavTap,
-        animationDuration: const Duration(milliseconds: 300),
+        animationDuration: const Duration(milliseconds: 200),
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -118,13 +99,13 @@ class _MainShellState extends ConsumerState<MainShell> {
           ),
           NavigationDestination(
             icon: Badge(
-              isLabelVisible: queueState.queuedCount > 0,
-              label: Text('${queueState.queuedCount}'),
+              isLabelVisible: queueState > 0,
+              label: Text('$queueState'),
               child: const Icon(Icons.download_outlined),
             ),
             selectedIcon: Badge(
-              isLabelVisible: queueState.queuedCount > 0,
-              label: Text('${queueState.queuedCount}'),
+              isLabelVisible: queueState > 0,
+              label: Text('$queueState'),
               child: const Icon(Icons.download),
             ),
             label: 'Downloads',

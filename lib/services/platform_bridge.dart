@@ -54,6 +54,7 @@ class PlatformBridge {
     int discNumber = 1,
     int totalTracks = 1,
     String? releaseDate,
+    String? itemId,
   }) async {
     final request = jsonEncode({
       'isrc': isrc,
@@ -73,6 +74,7 @@ class PlatformBridge {
       'disc_number': discNumber,
       'total_tracks': totalTracks,
       'release_date': releaseDate ?? '',
+      'item_id': itemId ?? '',
     });
     
     final result = await _channel.invokeMethod('downloadTrack', request);
@@ -98,6 +100,7 @@ class PlatformBridge {
     int totalTracks = 1,
     String? releaseDate,
     String preferredService = 'tidal',
+    String? itemId,
   }) async {
     final request = jsonEncode({
       'isrc': isrc,
@@ -117,16 +120,38 @@ class PlatformBridge {
       'disc_number': discNumber,
       'total_tracks': totalTracks,
       'release_date': releaseDate ?? '',
+      'item_id': itemId ?? '',
     });
     
     final result = await _channel.invokeMethod('downloadWithFallback', request);
     return jsonDecode(result as String) as Map<String, dynamic>;
   }
 
-  /// Get download progress
+  /// Get download progress (legacy single download)
   static Future<Map<String, dynamic>> getDownloadProgress() async {
     final result = await _channel.invokeMethod('getDownloadProgress');
     return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  /// Get progress for all active downloads (concurrent mode)
+  static Future<Map<String, dynamic>> getAllDownloadProgress() async {
+    final result = await _channel.invokeMethod('getAllDownloadProgress');
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  /// Initialize progress tracking for a download item
+  static Future<void> initItemProgress(String itemId) async {
+    await _channel.invokeMethod('initItemProgress', {'item_id': itemId});
+  }
+
+  /// Finish progress tracking for a download item
+  static Future<void> finishItemProgress(String itemId) async {
+    await _channel.invokeMethod('finishItemProgress', {'item_id': itemId});
+  }
+
+  /// Clear progress tracking for a download item
+  static Future<void> clearItemProgress(String itemId) async {
+    await _channel.invokeMethod('clearItemProgress', {'item_id': itemId});
   }
 
   /// Set download directory

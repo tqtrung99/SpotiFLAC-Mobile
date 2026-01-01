@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,10 +18,14 @@ class SetupScreen extends ConsumerStatefulWidget {
 
 class _SetupScreenState extends ConsumerState<SetupScreen> {
   int _currentStep = 0;
-  bool _permissionGranted = false;
+  bool _storagePermissionGranted = false;
+  bool _notificationPermissionGranted = false;
   String? _selectedDirectory;
   bool _isLoading = false;
   int _androidSdkVersion = 0;
+
+  // Total steps: Storage -> Notification (Android 13+) -> Folder
+  int get _totalSteps => _androidSdkVersion >= 33 ? 3 : 2;
 
   @override
   void initState() {
@@ -35,47 +40,54 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _androidSdkVersion = androidInfo.version.sdkInt;
       debugPrint('Android SDK Version: $_androidSdkVersion');
     }
-    await _checkInitialPermission();
+    await _checkInitialPermissions();
   }
 
-  Future<void> _checkInitialPermission() async {
+  Future<void> _checkInitialPermissions() async {
     if (Platform.isIOS) {
-      // iOS doesn't need storage permission - app uses its own Documents directory
       if (mounted) {
-        setState(() => _permissionGranted = true);
+        setState(() {
+          _storagePermissionGranted = true;
+          _notificationPermissionGranted = true;
+        });
       }
     } else if (Platform.isAndroid) {
-      PermissionStatus status;
-      
+      // Check storage permission
+      PermissionStatus storageStatus;
       if (_androidSdkVersion >= 33) {
-        status = await Permission.audio.status;
+        storageStatus = await Permission.audio.status;
       } else if (_androidSdkVersion >= 30) {
-        status = await Permission.manageExternalStorage.status;
+        storageStatus = await Permission.manageExternalStorage.status;
       } else {
-        status = await Permission.storage.status;
+        storageStatus = await Permission.storage.status;
       }
       
-      if (status.isGranted && mounted) {
-        setState(() => _permissionGranted = true);
+      // Check notification permission (Android 13+)
+      PermissionStatus notificationStatus = PermissionStatus.granted;
+      if (_androidSdkVersion >= 33) {
+        notificationStatus = await Permission.notification.status;
+      }
+      
+      if (mounted) {
+        setState(() {
+          _storagePermissionGranted = storageStatus.isGranted;
+          _notificationPermissionGranted = notificationStatus.isGranted;
+        });
       }
     }
   }
 
-  Future<void> _requestPermission() async {
+  Future<void> _requestStoragePermission() async {
     setState(() => _isLoading = true);
 
     try {
       if (Platform.isIOS) {
-        // iOS doesn't need storage permission - app uses its own Documents directory
-        setState(() => _permissionGranted = true);
+        setState(() => _storagePermissionGranted = true);
       } else if (Platform.isAndroid) {
         PermissionStatus status;
         
         if (_androidSdkVersion >= 33) {
           status = await Permission.audio.request();
-          if (!status.isGranted) {
-            await Permission.notification.request();
-          }
         } else if (_androidSdkVersion >= 30) {
           status = await Permission.manageExternalStorage.request();
         } else {
@@ -83,15 +95,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         }
         
         if (status.isGranted) {
-          setState(() => _permissionGranted = true);
+          setState(() => _storagePermissionGranted = true);
         } else if (status.isPermanentlyDenied) {
-          _showPermissionDeniedDialog();
+          _showPermissionDeniedDialog('Storage');
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Permission denied. Please grant permission to continue.'),
-              ),
+              const SnackBar(content: Text('Permission denied. Please grant permission to continue.')),
             );
           }
         }
@@ -99,22 +109,46 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     } catch (e) {
       debugPrint('Permission error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  void _showPermissionDeniedDialog() {
+  Future<void> _requestNotificationPermission() async {
+    setState(() => _isLoading = true);
+
+    try {
+      if (_androidSdkVersion >= 33) {
+        final status = await Permission.notification.request();
+        if (status.isGranted) {
+          setState(() => _notificationPermissionGranted = true);
+        } else if (status.isPermanentlyDenied) {
+          _showPermissionDeniedDialog('Notification');
+        }
+      } else {
+        // Notification permission not needed for older Android
+        setState(() => _notificationPermissionGranted = true);
+      }
+    } catch (e) {
+      debugPrint('Notification permission error: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _skipNotificationPermission() {
+    setState(() => _notificationPermissionGranted = true);
+  }
+
+  void _showPermissionDeniedDialog(String permissionType) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text(
-          'Storage permission is required to save downloaded music files. '
+        title: Text('$permissionType Permission Required'),
+        content: Text(
+          '$permissionType permission is required for the best experience. '
           'Please grant permission in app settings.',
         ),
         actions: [
@@ -151,18 +185,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Use Default Folder?'),
-              content: Text(
-                'No folder selected. Would you like to use the default Music folder?\n\n$defaultDir',
-              ),
+              content: Text('No folder selected. Would you like to use the default Music folder?\n\n$defaultDir'),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Use Default'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Use Default')),
               ],
             ),
           );
@@ -179,7 +205,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   Future<String> _getDefaultDirectory() async {
     if (Platform.isIOS) {
-      // iOS: Use Documents directory (accessible via Files app)
       final appDir = await getApplicationDocumentsDirectory();
       final musicDir = Directory('${appDir.path}/SpotiFLAC');
       try {
@@ -225,9 +250,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       setState(() => _isLoading = false);
@@ -244,9 +267,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height -
+              minHeight: math.max(0, MediaQuery.of(context).size.height -
                   MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom - 48,
+                  MediaQuery.of(context).padding.bottom - 48),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -257,27 +280,16 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     const SizedBox(height: 24),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(24),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        width: 96,
-                        height: 96,
-                      ),
+                      child: Image.asset('assets/images/logo.png', width: 96, height: 96),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'SpotiFLAC',
+                    Text('SpotiFLAC',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
-                    ),
+                        fontWeight: FontWeight.bold, color: colorScheme.primary)),
                     const SizedBox(height: 4),
-                    Text(
-                      'Download Spotify tracks in FLAC',
+                    Text('Download Spotify tracks in FLAC',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                        color: colorScheme.onSurfaceVariant)),
                   ],
                 ),
 
@@ -287,9 +299,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     const SizedBox(height: 24),
                     _buildStepIndicator(colorScheme),
                     const SizedBox(height: 24),
-                    _currentStep == 0
-                        ? _buildPermissionStep(colorScheme)
-                        : _buildDirectoryStep(colorScheme),
+                    _buildCurrentStepContent(colorScheme),
                   ],
                 ),
 
@@ -310,27 +320,32 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Widget _buildStepIndicator(ColorScheme colorScheme) {
+    final steps = _androidSdkVersion >= 33
+        ? ['Storage', 'Notification', 'Folder']
+        : ['Permission', 'Folder'];
+    
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildStepDot(0, 'Permission', colorScheme),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 20), // Offset for label height
-          child: Container(
-            width: 40,
-            height: 2,
-            color: _currentStep >= 1 ? colorScheme.primary : colorScheme.surfaceContainerHighest,
-          ),
-        ),
-        _buildStepDot(1, 'Folder', colorScheme),
+        for (int i = 0; i < steps.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Container(
+                width: 32,
+                height: 2,
+                color: _currentStep >= i ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+              ),
+            ),
+          _buildStepDot(i, steps[i], colorScheme),
+        ],
       ],
     );
   }
 
   Widget _buildStepDot(int step, String label, ColorScheme colorScheme) {
     final isActive = _currentStep >= step;
-    final isCompleted = (step == 0 && _permissionGranted) ||
-        (step == 1 && _selectedDirectory != null);
+    final isCompleted = _isStepCompleted(step);
 
     return Column(
       children: [
@@ -341,82 +356,139 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             shape: BoxShape.circle,
             color: isCompleted
                 ? colorScheme.primary
-                : isActive
-                    ? colorScheme.primaryContainer
-                    : colorScheme.surfaceContainerHighest,
+                : isActive ? colorScheme.primaryContainer : colorScheme.surfaceContainerHighest,
           ),
           child: Center(
             child: isCompleted
                 ? Icon(Icons.check, size: 18, color: colorScheme.onPrimary)
-                : Text(
-                    '${step + 1}',
+                : Text('${step + 1}',
                     style: TextStyle(
                       color: isActive ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                      fontWeight: FontWeight.bold)),
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
+        Text(label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-          ),
-        ),
+            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant)),
       ],
     );
   }
 
-  Widget _buildPermissionStep(ColorScheme colorScheme) {
+  bool _isStepCompleted(int step) {
+    if (_androidSdkVersion >= 33) {
+      // 3 steps: Storage, Notification, Folder
+      switch (step) {
+        case 0: return _storagePermissionGranted;
+        case 1: return _notificationPermissionGranted;
+        case 2: return _selectedDirectory != null;
+      }
+    } else {
+      // 2 steps: Permission, Folder
+      switch (step) {
+        case 0: return _storagePermissionGranted;
+        case 1: return _selectedDirectory != null;
+      }
+    }
+    return false;
+  }
+
+  Widget _buildCurrentStepContent(ColorScheme colorScheme) {
+    if (_androidSdkVersion >= 33) {
+      switch (_currentStep) {
+        case 0: return _buildStoragePermissionStep(colorScheme);
+        case 1: return _buildNotificationPermissionStep(colorScheme);
+        case 2: return _buildDirectoryStep(colorScheme);
+      }
+    } else {
+      switch (_currentStep) {
+        case 0: return _buildStoragePermissionStep(colorScheme);
+        case 1: return _buildDirectoryStep(colorScheme);
+      }
+    }
+    return const SizedBox();
+  }
+
+  Widget _buildStoragePermissionStep(ColorScheme colorScheme) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          _permissionGranted ? Icons.check_circle : Icons.folder_open,
+          _storagePermissionGranted ? Icons.check_circle : Icons.folder_open,
           size: 56,
-          color: _permissionGranted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          color: _storagePermissionGranted ? colorScheme.primary : colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: 16),
         Text(
-          _permissionGranted
-              ? 'Storage Permission Granted!'
-              : 'Storage Permission Required',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+          _storagePermissionGranted ? 'Storage Permission Granted!' : 'Storage Permission Required',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
-          _permissionGranted
-              ? 'You can now select where to save your music files.'
+          _storagePermissionGranted
+              ? 'You can now proceed to the next step.'
               : 'SpotiFLAC needs storage access to save downloaded music files to your device.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
-        if (!_permissionGranted)
+        if (!_storagePermissionGranted)
           FilledButton.icon(
-            onPressed: _isLoading ? null : _requestPermission,
+            onPressed: _isLoading ? null : _requestStoragePermission,
             icon: _isLoading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colorScheme.onPrimary,
-                    ),
-                  )
+                ? SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onPrimary))
                 : const Icon(Icons.security),
             label: const Text('Grant Permission'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
           ),
+      ],
+    );
+  }
+
+  Widget _buildNotificationPermissionStep(ColorScheme colorScheme) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          _notificationPermissionGranted ? Icons.check_circle : Icons.notifications_outlined,
+          size: 56,
+          color: _notificationPermissionGranted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _notificationPermissionGranted ? 'Notification Permission Granted!' : 'Enable Notifications',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _notificationPermissionGranted
+              ? 'You will receive download progress notifications.'
+              : 'Get notified about download progress and completion. This helps you track downloads when the app is in background.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 20),
+        if (!_notificationPermissionGranted) ...[
+          FilledButton.icon(
+            onPressed: _isLoading ? null : _requestNotificationPermission,
+            icon: _isLoading
+                ? SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onPrimary))
+                : const Icon(Icons.notifications_active),
+            label: const Text('Enable Notifications'),
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: _skipNotificationPermission,
+            child: const Text('Skip for now'),
+          ),
+        ],
       ],
     );
   }
@@ -433,12 +505,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          _selectedDirectory != null
-              ? 'Download Folder Selected!'
-              : 'Choose Download Folder',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+          _selectedDirectory != null ? 'Download Folder Selected!' : 'Choose Download Folder',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
@@ -455,46 +523,35 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 Icon(Icons.folder, color: colorScheme.primary, size: 20),
                 const SizedBox(width: 8),
                 Flexible(
-                  child: Text(
-                    _selectedDirectory!,
+                  child: Text(_selectedDirectory!,
                     style: Theme.of(context).textTheme.bodySmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    overflow: TextOverflow.ellipsis),
                 ),
               ],
             ),
           )
         else
-          Text(
-            'Select a folder where your downloaded music will be saved.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          Text('Select a folder where your downloaded music will be saved.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center),
         const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: _isLoading ? null : _selectDirectory,
           icon: _isLoading
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colorScheme.onPrimary,
-                  ),
-                )
+              ? SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onPrimary))
               : Icon(_selectedDirectory != null ? Icons.edit : Icons.folder_open),
           label: Text(_selectedDirectory != null ? 'Change Folder' : 'Select Folder'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          ),
+          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
         ),
       ],
     );
   }
 
   Widget _buildNavigationButtons(ColorScheme colorScheme) {
+    final isLastStep = _currentStep == _totalSteps - 1;
+    final canProceed = _isStepCompleted(_currentStep);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -509,41 +566,23 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           const SizedBox(width: 100),
 
         // Next/Finish button
-        if (_currentStep == 0)
+        if (!isLastStep)
           FilledButton(
-            onPressed: _permissionGranted
-                ? () => setState(() => _currentStep++)
-                : null,
+            onPressed: canProceed ? () => setState(() => _currentStep++) : null,
             child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Next'),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward, size: 18),
-              ],
+              children: [Text('Next'), SizedBox(width: 8), Icon(Icons.arrow_forward, size: 18)],
             ),
           )
         else
           FilledButton(
-            onPressed: _selectedDirectory != null && !_isLoading
-                ? _completeSetup
-                : null,
+            onPressed: _selectedDirectory != null && !_isLoading ? _completeSetup : null,
             child: _isLoading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2, 
-                      color: colorScheme.onPrimary,
-                    ),
-                  )
+                ? SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onPrimary))
                 : const Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('Get Started'),
-                      SizedBox(width: 8),
-                      Icon(Icons.check, size: 18),
-                    ],
+                    children: [Text('Get Started'), SizedBox(width: 8), Icon(Icons.check, size: 18)],
                   ),
           ),
       ],

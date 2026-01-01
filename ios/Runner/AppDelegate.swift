@@ -90,6 +90,28 @@ import Gobackend  // Import Go framework
             let response = GobackendGetDownloadProgress()
             return response
             
+        case "getAllDownloadProgress":
+            let response = GobackendGetAllDownloadProgress()
+            return response
+            
+        case "initItemProgress":
+            let args = call.arguments as! [String: Any]
+            let itemId = args["item_id"] as! String
+            GobackendInitItemProgress(itemId)
+            return nil
+            
+        case "finishItemProgress":
+            let args = call.arguments as! [String: Any]
+            let itemId = args["item_id"] as! String
+            GobackendFinishItemProgress(itemId)
+            return nil
+            
+        case "clearItemProgress":
+            let args = call.arguments as! [String: Any]
+            let itemId = args["item_id"] as! String
+            GobackendClearItemProgress(itemId)
+            return nil
+            
         case "setDownloadDirectory":
             let args = call.arguments as! [String: Any]
             let path = args["path"] as! String
@@ -144,6 +166,10 @@ import Gobackend  // Import Go framework
             let response = GobackendEmbedLyricsToFile(filePath, lyrics, &error)
             if let error = error { throw error }
             return response
+            
+        case "cleanupConnections":
+            GobackendCleanupConnections()
+            return nil
             
         default:
             throw NSError(

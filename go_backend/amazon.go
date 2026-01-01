@@ -202,11 +202,17 @@ func (a *AmazonDownloader) downloadFromDoubleDoubleService(amazonURL, outputDir 
 
 
 // DownloadFile downloads a file from URL with User-Agent and progress tracking
-func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string) error {
-	// Set current file being downloaded
+func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath, itemID string) error {
+	// Set current file being downloaded (legacy)
 	SetCurrentFile(filepath.Base(outputPath))
 	SetDownloading(true)
 	defer SetDownloading(false)
+
+	// Initialize item progress if itemID provided
+	if itemID != "" {
+		StartItemProgress(itemID)
+		defer CompleteItemProgress(itemID)
+	}
 
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
@@ -228,6 +234,9 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string) error {
 	// Set total bytes if available
 	if resp.ContentLength > 0 {
 		SetBytesTotal(resp.ContentLength)
+		if itemID != "" {
+			SetItemBytesTotal(itemID, resp.ContentLength)
+		}
 	}
 
 	out, err := os.Create(outputPath)
@@ -236,14 +245,20 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string) error {
 	}
 	defer out.Close()
 
-	// Track download progress
-	pw := NewProgressWriter(out)
-	_, err = io.Copy(pw, resp.Body)
+	// Use appropriate progress writer
+	var bytesWritten int64
+	if itemID != "" {
+		pw := NewItemProgressWriter(out, itemID)
+		bytesWritten, err = io.Copy(pw, resp.Body)
+	} else {
+		pw := NewProgressWriter(out)
+		bytesWritten, err = io.Copy(pw, resp.Body)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
-	fmt.Printf("\r[Amazon] Downloaded: %.2f MB (Complete)\n", float64(pw.GetTotal())/(1024*1024))
+	fmt.Printf("\r[Amazon] Downloaded: %.2f MB (Complete)\n", float64(bytesWritten)/(1024*1024))
 	return nil
 }
 
@@ -298,8 +313,8 @@ func downloadFromAmazon(req DownloadRequest) (string, error) {
 		return "EXISTS:" + outputPath, nil
 	}
 
-	// Download file
-	if err := downloader.DownloadFile(downloadURL, outputPath); err != nil {
+	// Download file with item ID for progress tracking
+	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
 

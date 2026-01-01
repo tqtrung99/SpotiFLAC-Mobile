@@ -261,11 +261,17 @@ func (q *QobuzDownloader) GetDownloadURL(trackID int64, quality string) (string,
 }
 
 // DownloadFile downloads a file from URL with User-Agent and progress tracking
-func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string) error {
-	// Set current file being downloaded
+func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath, itemID string) error {
+	// Set current file being downloaded (legacy)
 	SetCurrentFile(filepath.Base(outputPath))
 	SetDownloading(true)
 	defer SetDownloading(false)
+
+	// Initialize item progress if itemID provided
+	if itemID != "" {
+		StartItemProgress(itemID)
+		defer CompleteItemProgress(itemID)
+	}
 
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
@@ -285,6 +291,9 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string) error {
 	// Set total bytes if available
 	if resp.ContentLength > 0 {
 		SetBytesTotal(resp.ContentLength)
+		if itemID != "" {
+			SetItemBytesTotal(itemID, resp.ContentLength)
+		}
 	}
 
 	out, err := os.Create(outputPath)
@@ -293,9 +302,14 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string) error {
 	}
 	defer out.Close()
 
-	// Use ProgressWriter for tracking
-	progressWriter := NewProgressWriter(out)
-	_, err = io.Copy(progressWriter, resp.Body)
+	// Use appropriate progress writer
+	if itemID != "" {
+		progressWriter := NewItemProgressWriter(out, itemID)
+		_, err = io.Copy(progressWriter, resp.Body)
+	} else {
+		progressWriter := NewProgressWriter(out)
+		_, err = io.Copy(progressWriter, resp.Body)
+	}
 	return err
 }
 
@@ -366,8 +380,8 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 		return "", fmt.Errorf("failed to get download URL: %w", err)
 	}
 
-	// Download file
-	if err := downloader.DownloadFile(downloadURL, outputPath); err != nil {
+	// Download file with item ID for progress tracking
+	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
 

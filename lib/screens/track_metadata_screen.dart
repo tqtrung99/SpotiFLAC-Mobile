@@ -9,23 +9,47 @@ import 'package:spotiflac_android/providers/download_queue_provider.dart';
 
 /// Screen to display detailed metadata for a downloaded track
 /// Designed with Material Expressive 3 style
-class TrackMetadataScreen extends ConsumerWidget {
+class TrackMetadataScreen extends ConsumerStatefulWidget {
   final DownloadHistoryItem item;
 
   const TrackMetadataScreen({super.key, required this.item});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final fileExists = File(item.filePath).existsSync();
-    
-    // Get file info
-    int? fileSize;
-    if (fileExists) {
+  ConsumerState<TrackMetadataScreen> createState() => _TrackMetadataScreenState();
+}
+
+class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
+  bool _fileExists = false;
+  int? _fileSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFile();
+  }
+
+  Future<void> _checkFile() async {
+    final file = File(widget.item.filePath);
+    final exists = await file.exists();
+    int? size;
+    if (exists) {
       try {
-        fileSize = File(item.filePath).lengthSync();
+        size = await file.length();
       } catch (_) {}
     }
+    if (mounted) {
+      setState(() {
+        _fileExists = exists;
+        _fileSize = size;
+      });
+    }
+  }
+
+  DownloadHistoryItem get item => widget.item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: CustomScrollView(
@@ -77,22 +101,22 @@ class TrackMetadataScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Track info card
-                  _buildTrackInfoCard(context, colorScheme, fileExists),
+                  _buildTrackInfoCard(context, colorScheme, _fileExists),
                   
                   const SizedBox(height: 16),
                   
                   // Metadata card
-                  _buildMetadataCard(context, colorScheme, fileSize),
+                  _buildMetadataCard(context, colorScheme, _fileSize),
                   
                   const SizedBox(height: 16),
                   
                   // File info card
-                  _buildFileInfoCard(context, colorScheme, fileExists, fileSize),
+                  _buildFileInfoCard(context, colorScheme, _fileExists, _fileSize),
                   
                   const SizedBox(height: 24),
                   
                   // Action buttons
-                  _buildActionButtons(context, ref, colorScheme, fileExists),
+                  _buildActionButtons(context, ref, colorScheme, _fileExists),
                   
                   const SizedBox(height: 32),
                 ],

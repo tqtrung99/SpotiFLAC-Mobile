@@ -71,6 +71,33 @@ class MainActivity: FlutterActivity() {
                             }
                             result.success(response)
                         }
+                        "getAllDownloadProgress" -> {
+                            val response = withContext(Dispatchers.IO) {
+                                Gobackend.getAllDownloadProgress()
+                            }
+                            result.success(response)
+                        }
+                        "initItemProgress" -> {
+                            val itemId = call.argument<String>("item_id") ?: ""
+                            withContext(Dispatchers.IO) {
+                                Gobackend.initItemProgress(itemId)
+                            }
+                            result.success(null)
+                        }
+                        "finishItemProgress" -> {
+                            val itemId = call.argument<String>("item_id") ?: ""
+                            withContext(Dispatchers.IO) {
+                                Gobackend.finishItemProgress(itemId)
+                            }
+                            result.success(null)
+                        }
+                        "clearItemProgress" -> {
+                            val itemId = call.argument<String>("item_id") ?: ""
+                            withContext(Dispatchers.IO) {
+                                Gobackend.clearItemProgress(itemId)
+                            }
+                            result.success(null)
+                        }
                         "setDownloadDirectory" -> {
                             val path = call.argument<String>("path") ?: ""
                             withContext(Dispatchers.IO) {

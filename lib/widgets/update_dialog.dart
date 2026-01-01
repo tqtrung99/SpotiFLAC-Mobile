@@ -127,21 +127,82 @@ class UpdateDialog extends StatelessWidget {
     );
   }
 
-  /// Format changelog - clean up markdown
+  /// Format changelog - clean up markdown and extract relevant content
   String _formatChangelog(String changelog) {
-    // Remove markdown headers but keep content
-    var formatted = changelog
-        .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
-        .replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1') // Remove bold
-        .replaceAll(RegExp(r'`([^`]+)`'), r'$1') // Remove code
-        .trim();
+    // Try to extract just the changelog section (between "What's New" and "Downloads" or "---")
+    var content = changelog;
     
-    // Limit length
-    if (formatted.length > 1000) {
-      formatted = '${formatted.substring(0, 1000)}...';
+    // Find content after "What's New" header
+    final whatsNewMatch = RegExp(r"###?\s*What'?s\s*New\s*\n", caseSensitive: false).firstMatch(content);
+    if (whatsNewMatch != null) {
+      content = content.substring(whatsNewMatch.end);
     }
     
-    return formatted;
+    // Cut off at "Downloads" section or horizontal rule
+    final cutoffMatch = RegExp(r'\n---|\n###?\s*Downloads', caseSensitive: false).firstMatch(content);
+    if (cutoffMatch != null) {
+      content = content.substring(0, cutoffMatch.start);
+    }
+    
+    // Process line by line for better formatting
+    final lines = content.split('\n');
+    final formattedLines = <String>[];
+    String? currentSection;
+    
+    for (var line in lines) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+      
+      // Check if it's a section header (### Added, ### Fixed, etc.)
+      final sectionMatch = RegExp(r'^#{1,3}\s*(.+)$').firstMatch(line);
+      if (sectionMatch != null) {
+        currentSection = sectionMatch.group(1)?.trim();
+        if (currentSection != null && currentSection.isNotEmpty) {
+          if (formattedLines.isNotEmpty) formattedLines.add('');
+          formattedLines.add('$currentSection:');
+        }
+        continue;
+      }
+      
+      // Check if it's a list item
+      final listMatch = RegExp(r'^[-*]\s+(.+)$').firstMatch(line);
+      if (listMatch != null) {
+        var itemText = listMatch.group(1) ?? '';
+        // Remove bold markdown
+        itemText = itemText.replaceAllMapped(
+          RegExp(r'\*\*([^*]+)\*\*'), 
+          (m) => m.group(1) ?? ''
+        );
+        // Remove code markdown
+        itemText = itemText.replaceAllMapped(
+          RegExp(r'`([^`]+)`'), 
+          (m) => m.group(1) ?? ''
+        );
+        formattedLines.add('• $itemText');
+        continue;
+      }
+      
+      // Check if it's a sub-item (indented list)
+      final subListMatch = RegExp(r'^\s+[-*]\s+(.+)$').firstMatch(line);
+      if (subListMatch != null) {
+        var itemText = subListMatch.group(1) ?? '';
+        itemText = itemText.replaceAllMapped(
+          RegExp(r'\*\*([^*]+)\*\*'), 
+          (m) => m.group(1) ?? ''
+        );
+        formattedLines.add('  - $itemText');
+        continue;
+      }
+    }
+    
+    var formatted = formattedLines.join('\n').trim();
+    
+    // Limit length
+    if (formatted.length > 2000) {
+      formatted = '${formatted.substring(0, 2000)}...';
+    }
+    
+    return formatted.isEmpty ? 'See release notes for details.' : formatted;
   }
 }
 

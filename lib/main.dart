@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/app.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
+import 'package:spotiflac_android/services/notification_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize notification service
+  await NotificationService().initialize();
+  
   runApp(
     ProviderScope(
       child: const _EagerInitialization(

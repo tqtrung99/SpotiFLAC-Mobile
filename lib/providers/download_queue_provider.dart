@@ -12,6 +12,7 @@ import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/ffmpeg_service.dart';
+import 'package:spotiflac_android/services/notification_service.dart';
 
 // Download History Item model
 class DownloadHistoryItem {
@@ -183,6 +184,7 @@ class DownloadQueueState {
   final List<DownloadItem> items;
   final DownloadItem? currentDownload;
   final bool isProcessing;
+  final bool isPaused; // NEW: pause state
   final String outputDir;
   final String filenameFormat;
   final String audioQuality; // LOSSLESS, HI_RES, HI_RES_LOSSLESS
@@ -193,6 +195,7 @@ class DownloadQueueState {
     this.items = const [],
     this.currentDownload,
     this.isProcessing = false,
+    this.isPaused = false,
     this.outputDir = '',
     this.filenameFormat = '{artist} - {title}',
     this.audioQuality = 'LOSSLESS',
@@ -204,6 +207,7 @@ class DownloadQueueState {
     List<DownloadItem>? items,
     DownloadItem? currentDownload,
     bool? isProcessing,
+    bool? isPaused,
     String? outputDir,
     String? filenameFormat,
     String? audioQuality,
@@ -214,6 +218,7 @@ class DownloadQueueState {
       items: items ?? this.items,
       currentDownload: currentDownload ?? this.currentDownload,
       isProcessing: isProcessing ?? this.isProcessing,
+      isPaused: isPaused ?? this.isPaused,
       outputDir: outputDir ?? this.outputDir,
       filenameFormat: filenameFormat ?? this.filenameFormat,
       audioQuality: audioQuality ?? this.audioQuality,
@@ -233,6 +238,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
   Timer? _progressTimer;
   int _downloadCount = 0; // Counter for connection cleanup
   static const _cleanupInterval = 50; // Cleanup every 50 downloads
+  final NotificationService _notificationService = NotificationService();
+  int _totalQueuedAtStart = 0; // Track total items when queue started
 
   @override
   DownloadQueueState build() {
@@ -256,10 +263,71 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           final percentage = bytesReceived / bytesTotal;
           updateProgress(itemId, percentage);
           
+          // Update notification with progress
+          final currentItem = state.currentDownload;
+          if (currentItem != null) {
+            _notificationService.showDownloadProgress(
+              trackName: currentItem.track.name,
+              artistName: currentItem.track.artistName,
+              progress: bytesReceived,
+              total: bytesTotal,
+            );
+          }
+          
           // Log progress
           final mbReceived = bytesReceived / (1024 * 1024);
           final mbTotal = bytesTotal / (1024 * 1024);
           print('[DownloadQueue] Progress: ${(percentage * 100).toStringAsFixed(1)}% (${mbReceived.toStringAsFixed(2)}/${mbTotal.toStringAsFixed(2)} MB)');
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    });
+  }
+
+  /// Start multi-progress polling for concurrent downloads
+  void _startMultiProgressPolling() {
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      try {
+        final allProgress = await PlatformBridge.getAllDownloadProgress();
+        final items = allProgress['items'] as Map<String, dynamic>? ?? {};
+        
+        for (final entry in items.entries) {
+          final itemId = entry.key;
+          final itemProgress = entry.value as Map<String, dynamic>;
+          final bytesReceived = itemProgress['bytes_received'] as int? ?? 0;
+          final bytesTotal = itemProgress['bytes_total'] as int? ?? 0;
+          final isDownloading = itemProgress['is_downloading'] as bool? ?? false;
+          
+          if (isDownloading && bytesTotal > 0) {
+            final percentage = bytesReceived / bytesTotal;
+            updateProgress(itemId, percentage);
+            
+            // Log progress for each item
+            final mbReceived = bytesReceived / (1024 * 1024);
+            final mbTotal = bytesTotal / (1024 * 1024);
+            print('[DownloadQueue] Progress [$itemId]: ${(percentage * 100).toStringAsFixed(1)}% (${mbReceived.toStringAsFixed(2)}/${mbTotal.toStringAsFixed(2)} MB)');
+          }
+        }
+        
+        // Update notification with first active download
+        if (items.isNotEmpty) {
+          final firstEntry = items.entries.first;
+          final firstProgress = firstEntry.value as Map<String, dynamic>;
+          final bytesReceived = firstProgress['bytes_received'] as int? ?? 0;
+          final bytesTotal = firstProgress['bytes_total'] as int? ?? 0;
+          
+          // Find the item to get track info
+          final downloadingItems = state.items.where((i) => i.status == DownloadStatus.downloading).toList();
+          if (downloadingItems.isNotEmpty) {
+            _notificationService.showDownloadProgress(
+              trackName: '${downloadingItems.length} downloads',
+              artistName: 'Downloading...',
+              progress: bytesReceived,
+              total: bytesTotal > 0 ? bytesTotal : 1,
+            );
+          }
         }
       } catch (e) {
         // Ignore polling errors
@@ -409,7 +477,59 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
   }
 
   void clearAll() {
-    state = const DownloadQueueState();
+    state = state.copyWith(items: [], isPaused: false);
+  }
+
+  /// Pause the download queue
+  void pauseQueue() {
+    if (state.isProcessing && !state.isPaused) {
+      state = state.copyWith(isPaused: true);
+      _notificationService.cancelDownloadNotification();
+      print('[DownloadQueue] Queue paused');
+    }
+  }
+
+  /// Resume the download queue
+  void resumeQueue() {
+    if (state.isPaused) {
+      state = state.copyWith(isPaused: false);
+      print('[DownloadQueue] Queue resumed');
+      // If there are still queued items, continue processing
+      if (state.queuedCount > 0 && !state.isProcessing) {
+        Future.microtask(() => _processQueue());
+      }
+    }
+  }
+
+  /// Toggle pause/resume
+  void togglePause() {
+    if (state.isPaused) {
+      resumeQueue();
+    } else {
+      pauseQueue();
+    }
+  }
+
+  /// Retry a failed download
+  void retryItem(String id) {
+    final items = state.items.map((item) {
+      if (item.id == id && item.status == DownloadStatus.failed) {
+        return item.copyWith(status: DownloadStatus.queued, progress: 0, error: null);
+      }
+      return item;
+    }).toList();
+    state = state.copyWith(items: items);
+    
+    // Start processing if not already
+    if (!state.isProcessing) {
+      Future.microtask(() => _processQueue());
+    }
+  }
+
+  /// Remove a specific item from queue
+  void removeItem(String id) {
+    final items = state.items.where((item) => item.id != id).toList();
+    state = state.copyWith(items: items);
   }
 
   /// Embed metadata and cover to a FLAC file after M4A conversion
@@ -482,6 +602,9 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     state = state.copyWith(isProcessing: true);
     print('[DownloadQueue] Starting queue processing...');
 
+    // Track total items at start for notification
+    _totalQueuedAtStart = state.items.where((i) => i.status == DownloadStatus.queued).length;
+
     // Ensure output directory is initialized before processing
     if (state.outputDir.isEmpty) {
       print('[DownloadQueue] Output dir empty, initializing...');
@@ -522,6 +645,16 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       _downloadCount = 0;
     }
     
+    // Show queue completion notification
+    final completedCount = state.completedCount;
+    final failedCount = state.failedCount;
+    if (_totalQueuedAtStart > 0) {
+      await _notificationService.showQueueComplete(
+        completedCount: completedCount,
+        failedCount: failedCount,
+      );
+    }
+    
     print('[DownloadQueue] Queue processing finished');
     state = state.copyWith(isProcessing: false, currentDownload: null);
   }
@@ -529,6 +662,13 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
   /// Sequential download processing (original behavior)
   Future<void> _processQueueSequential() async {
     while (true) {
+      // Check if paused
+      if (state.isPaused) {
+        print('[DownloadQueue] Queue is paused, waiting...');
+        await Future.delayed(const Duration(milliseconds: 500));
+        continue;
+      }
+      
       final nextItem = state.items.firstWhere(
         (item) => item.status == DownloadStatus.queued,
         orElse: () => DownloadItem(
@@ -553,7 +693,21 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     final maxConcurrent = state.concurrentDownloads;
     final activeDownloads = <String, Future<void>>{}; // Map item ID to future
     
+    // Start multi-progress polling for concurrent downloads
+    _startMultiProgressPolling();
+    
     while (true) {
+      // Check if paused - don't start new downloads but let active ones finish
+      if (state.isPaused) {
+        print('[DownloadQueue] Queue is paused, waiting for active downloads...');
+        if (activeDownloads.isNotEmpty) {
+          await Future.any(activeDownloads.values);
+        } else {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+        continue;
+      }
+      
       // Get queued items
       final queuedItems = state.items.where((item) => item.status == DownloadStatus.queued).toList();
       
@@ -563,7 +717,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       }
       
       // Start new downloads up to max concurrent limit
-      while (activeDownloads.length < maxConcurrent && queuedItems.isNotEmpty) {
+      while (activeDownloads.length < maxConcurrent && queuedItems.isNotEmpty && !state.isPaused) {
         final item = queuedItems.removeAt(0);
         
         // Mark as downloading immediately to prevent double-processing
@@ -572,6 +726,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
         // Create the download future
         final future = _downloadSingleItem(item).whenComplete(() {
           activeDownloads.remove(item.id);
+          // Clear item progress after download completes
+          PlatformBridge.clearItemProgress(item.id).catchError((_) {});
         });
         
         activeDownloads[item.id] = future;
@@ -624,6 +780,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           discNumber: item.track.discNumber ?? 1,
           releaseDate: item.track.releaseDate,
           preferredService: item.service,
+          itemId: item.id, // Pass item ID for progress tracking
         );
       } else {
         result = await PlatformBridge.downloadTrack(
@@ -641,6 +798,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           trackNumber: item.track.trackNumber ?? 1,
           discNumber: item.track.discNumber ?? 1,
           releaseDate: item.track.releaseDate,
+          itemId: item.id, // Pass item ID for progress tracking
         );
       }
 
@@ -683,6 +841,14 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           DownloadStatus.completed,
           progress: 1.0,
           filePath: filePath,
+        );
+
+        // Show completion notification for this track
+        await _notificationService.showDownloadComplete(
+          trackName: item.track.name,
+          artistName: item.track.artistName,
+          completedCount: state.completedCount,
+          totalCount: _totalQueuedAtStart,
         );
 
         if (filePath != null) {

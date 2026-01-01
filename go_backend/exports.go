@@ -106,6 +106,7 @@ type DownloadRequest struct {
 	DiscNumber           int    `json:"disc_number"`
 	TotalTracks          int    `json:"total_tracks"`
 	ReleaseDate          string `json:"release_date"`
+	ItemID               string `json:"item_id"` // Unique ID for progress tracking
 }
 
 // DownloadResponse represents the result of a download
@@ -253,6 +254,27 @@ func GetDownloadProgress() string {
 	progress := getProgress()
 	jsonBytes, _ := json.Marshal(progress)
 	return string(jsonBytes)
+}
+
+// GetAllDownloadProgress returns progress for all active downloads (concurrent mode)
+func GetAllDownloadProgress() string {
+	return GetMultiProgress()
+}
+
+// InitItemProgress initializes progress tracking for a download item
+func InitItemProgress(itemID string) {
+	StartItemProgress(itemID)
+}
+
+// FinishItemProgress marks a download item as complete and removes tracking
+func FinishItemProgress(itemID string) {
+	CompleteItemProgress(itemID)
+	// Don't remove immediately - let Flutter poll one more time to see 100%
+}
+
+// ClearItemProgress removes progress tracking for a specific item
+func ClearItemProgress(itemID string) {
+	RemoveItemProgress(itemID)
 }
 
 // CleanupConnections closes idle HTTP connections

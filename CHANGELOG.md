@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.5.0] - 2026-01-02
+
+### Added
+- **Download Progress Notification**: Shows notification with download progress percentage while downloading
+  - Progress bar in notification during download
+  - Completion notification when track finishes
+  - Summary notification when all downloads complete
+- **Notification Permission in Setup**: Android 13+ users will be prompted for notification permission during initial setup
+  - New step in setup wizard for notification permission
+  - Option to skip if user doesn't want notifications
+- **Per-Item Queue Controls**: Each track in download queue now has individual controls
+  - Cancel button for queued items
+  - Stop button for currently downloading items
+  - Retry and Remove buttons for failed/skipped items
+  - Visual progress bar with percentage for each downloading track
+- **Pull-to-Refresh on Home**: Swipe down to clear URL input and fetched tracks
+  - No need to exit app to clear current search/fetch
+- **Multi-Progress Tracking for Concurrent Downloads**: Each concurrent download now shows individual progress percentage
+  - Previously concurrent downloads jumped from 0% to 100%
+  - Now each track shows real-time progress when downloading in parallel
+
+### Changed
+- **Recent Downloads**: Now shows up to 10 items (was 5) for better scrolling
+- **Queue UI Redesign**: Card-based layout with clearer status indicators
+  - Removed global pause/resume in favor of per-item controls
+  - Better visual hierarchy with cover art, track info, and action buttons
+- **Settings UI**: Redesigned with category-based navigation (One UI style)
+  - Main settings tab with 4 categories: Appearance, Download, Options, About
+  - Each category opens a detail page
+  - Large title at top with menu items below
+  - One-handed friendly layout
+- **Collapsing Toolbar**: Implemented One UI style collapsing header for all tabs
+  - Title animates from 28px (expanded) to 20px (collapsed)
+  - Back button only on settings detail pages
+  - Consistent across Home, Downloads, and Settings tabs
+- **Home Search Bar Redesign**: More prominent and user-friendly input
+  - Larger card-style search bar with border outline
+  - Tap to open bottom sheet with full input experience
+  - Paste and Search buttons clearly visible
+  - Helper text showing supported URL types
+- **Empty State Improved**: Better onboarding for new users
+  - "Ready to Download" title with icon
+  - Clear instructions on how to use the app
+  - "Add Music" button for quick access
+
+### Technical
+- Added `flutter_local_notifications` package for notifications
+- Added notification permission request in setup screen for Android 13+
+- Enabled core library desugaring for all Android subprojects
+- Added multi-progress tracking in Go backend (`ItemProgress`, `ItemProgressWriter`)
+- Added `GetAllDownloadProgress`, `InitItemProgress`, `FinishItemProgress`, `ClearItemProgress` exports
+- Updated platform channel handlers for both Android (Kotlin) and iOS (Swift)
+
+### Performance
+- Optimized SliverAppBar: Removed LayoutBuilder that was called every frame during scroll
+- Optimized image caching: Added `memCacheWidth/Height` to CachedNetworkImage for memory efficiency
+- Optimized state management: Use `select()` to only rebuild when specific state changes
+- Smoother animations: Changed to `BouncingScrollPhysics` and `Curves.easeOutCubic`
+
 ## [1.2.0] - 2026-01-02
 
 ### Added

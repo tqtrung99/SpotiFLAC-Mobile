@@ -640,16 +640,22 @@ func parseManifest(manifestB64 string) (directURL string, initURL string, mediaU
 
 
 // DownloadFile downloads a file from URL with progress tracking
-func (t *TidalDownloader) DownloadFile(downloadURL, outputPath string) error {
+func (t *TidalDownloader) DownloadFile(downloadURL, outputPath, itemID string) error {
 	// Handle manifest-based download
 	if strings.HasPrefix(downloadURL, "MANIFEST:") {
-		return t.downloadFromManifest(strings.TrimPrefix(downloadURL, "MANIFEST:"), outputPath)
+		return t.downloadFromManifest(strings.TrimPrefix(downloadURL, "MANIFEST:"), outputPath, itemID)
 	}
 
-	// Set current file being downloaded
+	// Set current file being downloaded (legacy)
 	SetCurrentFile(filepath.Base(outputPath))
 	SetDownloading(true)
 	defer SetDownloading(false)
+
+	// Initialize item progress if itemID provided
+	if itemID != "" {
+		StartItemProgress(itemID)
+		defer CompleteItemProgress(itemID)
+	}
 
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
@@ -669,6 +675,9 @@ func (t *TidalDownloader) DownloadFile(downloadURL, outputPath string) error {
 	// Set total bytes if available
 	if resp.ContentLength > 0 {
 		SetBytesTotal(resp.ContentLength)
+		if itemID != "" {
+			SetItemBytesTotal(itemID, resp.ContentLength)
+		}
 	}
 
 	out, err := os.Create(outputPath)
@@ -677,13 +686,18 @@ func (t *TidalDownloader) DownloadFile(downloadURL, outputPath string) error {
 	}
 	defer out.Close()
 
-	// Use ProgressWriter for tracking
-	progressWriter := NewProgressWriter(out)
-	_, err = io.Copy(progressWriter, resp.Body)
+	// Use appropriate progress writer
+	if itemID != "" {
+		progressWriter := NewItemProgressWriter(out, itemID)
+		_, err = io.Copy(progressWriter, resp.Body)
+	} else {
+		progressWriter := NewProgressWriter(out)
+		_, err = io.Copy(progressWriter, resp.Body)
+	}
 	return err
 }
 
-func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath string) error {
+func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath, itemID string) error {
 	directURL, initURL, mediaURLs, err := parseManifest(manifestB64)
 	if err != nil {
 		return fmt.Errorf("failed to parse manifest: %w", err)
@@ -695,10 +709,16 @@ func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath string) e
 
 	// If we have a direct URL (BTS format), download directly with progress tracking
 	if directURL != "" {
-		// Set current file being downloaded
+		// Set current file being downloaded (legacy)
 		SetCurrentFile(filepath.Base(outputPath))
 		SetDownloading(true)
 		defer SetDownloading(false)
+
+		// Initialize item progress if itemID provided
+		if itemID != "" {
+			StartItemProgress(itemID)
+			defer CompleteItemProgress(itemID)
+		}
 
 		req, err := http.NewRequest("GET", directURL, nil)
 		if err != nil {
@@ -718,6 +738,9 @@ func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath string) e
 		// Set total bytes for progress tracking
 		if resp.ContentLength > 0 {
 			SetBytesTotal(resp.ContentLength)
+			if itemID != "" {
+				SetItemBytesTotal(itemID, resp.ContentLength)
+			}
 		}
 
 		out, err := os.Create(outputPath)
@@ -726,9 +749,14 @@ func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath string) e
 		}
 		defer out.Close()
 
-		// Use ProgressWriter for tracking
-		progressWriter := NewProgressWriter(out)
-		_, err = io.Copy(progressWriter, resp.Body)
+		// Use appropriate progress writer
+		if itemID != "" {
+			progressWriter := NewItemProgressWriter(out, itemID)
+			_, err = io.Copy(progressWriter, resp.Body)
+		} else {
+			progressWriter := NewProgressWriter(out)
+			_, err = io.Copy(progressWriter, resp.Body)
+		}
 		return err
 	}
 
@@ -872,8 +900,8 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 		return "", fmt.Errorf("failed to get download URL: %w", err)
 	}
 
-	// Download file
-	if err := downloader.DownloadFile(downloadURL, outputPath); err != nil {
+	// Download file with item ID for progress tracking
+	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
 
