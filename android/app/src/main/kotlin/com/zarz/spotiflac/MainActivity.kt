@@ -127,6 +127,12 @@ class MainActivity: FlutterActivity() {
                             }
                             result.success(response)
                         }
+                        "cleanupConnections" -> {
+                            withContext(Dispatchers.IO) {
+                                Gobackend.cleanupConnections()
+                            }
+                            result.success(null)
+                        }
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {

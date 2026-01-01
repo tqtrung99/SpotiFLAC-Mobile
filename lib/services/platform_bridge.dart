@@ -195,4 +195,10 @@ class PlatformBridge {
     });
     return jsonDecode(result as String) as Map<String, dynamic>;
   }
+
+  /// Cleanup idle HTTP connections to prevent TCP exhaustion
+  /// Call this periodically during large batch downloads
+  static Future<void> cleanupConnections() async {
+    await _channel.invokeMethod('cleanupConnections');
+  }
 }

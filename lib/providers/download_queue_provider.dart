@@ -169,6 +169,8 @@ class DownloadQueueState {
 // Download Queue Notifier (Riverpod 3.x)
 class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
   Timer? _progressTimer;
+  int _downloadCount = 0; // Counter for connection cleanup
+  static const _cleanupInterval = 50; // Cleanup every 50 downloads
 
   @override
   DownloadQueueState build() {
@@ -552,6 +554,17 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
             error: errorMsg,
           );
         }
+        
+        // Increment download counter and cleanup connections periodically
+        _downloadCount++;
+        if (_downloadCount % _cleanupInterval == 0) {
+          print('[DownloadQueue] Cleaning up idle connections (after $_downloadCount downloads)...');
+          try {
+            await PlatformBridge.cleanupConnections();
+          } catch (e) {
+            print('[DownloadQueue] Connection cleanup failed: $e');
+          }
+        }
       } catch (e, stackTrace) {
         _stopProgressPolling();
         print('[DownloadQueue] Exception: $e');
@@ -565,6 +578,18 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     }
 
     _stopProgressPolling();
+    
+    // Final cleanup after queue finishes
+    if (_downloadCount > 0) {
+      print('[DownloadQueue] Final connection cleanup...');
+      try {
+        await PlatformBridge.cleanupConnections();
+      } catch (e) {
+        print('[DownloadQueue] Final cleanup failed: $e');
+      }
+      _downloadCount = 0;
+    }
+    
     print('[DownloadQueue] Queue processing finished');
     state = state.copyWith(isProcessing: false, currentDownload: null);
   }

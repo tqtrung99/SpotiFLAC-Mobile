@@ -239,6 +239,12 @@ func GetDownloadProgress() string {
 	return string(jsonBytes)
 }
 
+// CleanupConnections closes idle HTTP connections
+// Call this periodically during large batch downloads to prevent TCP exhaustion
+func CleanupConnections() {
+	CloseIdleConnections()
+}
+
 // SetDownloadDirectory sets the default download directory
 func SetDownloadDirectory(path string) error {
 	return setDownloadDir(path)

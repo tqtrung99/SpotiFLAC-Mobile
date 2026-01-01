@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -41,11 +42,57 @@ const (
 	DefaultRetryDelay  = 1 * time.Second   // Initial retry delay
 )
 
+// Shared transport with connection pooling to prevent TCP exhaustion
+var sharedTransport = &http.Transport{
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   10,
+	MaxConnsPerHost:       20,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+	DisableKeepAlives:     false, // Enable keep-alives for connection reuse
+	ForceAttemptHTTP2:     true,
+}
+
+// Shared HTTP client for general requests (reuses connections)
+var sharedClient = &http.Client{
+	Transport: sharedTransport,
+	Timeout:   DefaultTimeout,
+}
+
+// Shared HTTP client for downloads (longer timeout, reuses connections)
+var downloadClient = &http.Client{
+	Transport: sharedTransport,
+	Timeout:   DownloadTimeout,
+}
+
 // NewHTTPClientWithTimeout creates an HTTP client with specified timeout
+// Uses shared transport for connection reuse
 func NewHTTPClientWithTimeout(timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout: timeout,
+		Transport: sharedTransport,
+		Timeout:   timeout,
 	}
+}
+
+// GetSharedClient returns the shared HTTP client for general requests
+func GetSharedClient() *http.Client {
+	return sharedClient
+}
+
+// GetDownloadClient returns the shared HTTP client for downloads
+func GetDownloadClient() *http.Client {
+	return downloadClient
+}
+
+// CloseIdleConnections closes idle connections in the shared transport
+// Call this periodically during large batch downloads to prevent connection buildup
+func CloseIdleConnections() {
+	sharedTransport.CloseIdleConnections()
 }
 
 // DoRequestWithUserAgent executes an HTTP request with a random User-Agent header
