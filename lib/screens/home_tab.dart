@@ -259,21 +259,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
                           ),
                           child: Icon(Icons.music_note, size: 48, color: colorScheme.primary),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Search Music',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Paste a Spotify link or search by name',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
                       ],
                     ),
             ),
