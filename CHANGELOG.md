@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.5] - 2026-01-05
+
+### Added
+- **Large Playlist Support**: Playlists with up to 1000 tracks are now fully fetched (was limited to 100)
+
+### Fixed
+- **Wrong Track Download**: Fixed issue where tracks with same ISRC but different versions (e.g., short/instrumental vs full version) would download the wrong track. Now verifies duration matches before downloading (30 second tolerance).
+
 ## [2.0.4] - 2026-01-04
 
 ### Fixed

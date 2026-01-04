@@ -315,6 +315,28 @@ func (t *TidalDownloader) SearchTrackByISRC(isrc string) (*TidalTrack, error) {
 	return nil, fmt.Errorf("no exact ISRC match found for: %s", isrc)
 }
 
+// normalizeTitle normalizes a track title for comparison (kept for potential future use)
+func normalizeTitle(title string) string {
+	normalized := strings.ToLower(strings.TrimSpace(title))
+	
+	// Remove common suffixes in parentheses or brackets
+	suffixPatterns := []string{
+		" (remaster)", " (remastered)", " (deluxe)", " (deluxe edition)",
+		" (bonus track)", " (single)", " (album version)", " (radio edit)",
+		" [remaster]", " [remastered]", " [deluxe]", " [bonus track]",
+	}
+	for _, suffix := range suffixPatterns {
+		normalized = strings.TrimSuffix(normalized, suffix)
+	}
+	
+	// Remove multiple spaces
+	for strings.Contains(normalized, "  ") {
+		normalized = strings.ReplaceAll(normalized, "  ", " ")
+	}
+	
+	return normalized
+}
+
 // SearchTrackByMetadataWithISRC searches for a track with ISRC matching priority
 func (t *TidalDownloader) SearchTrackByMetadataWithISRC(trackName, artistName, spotifyISRC string, expectedDuration int) (*TidalTrack, error) {
 	token, err := t.GetAccessToken()
@@ -390,14 +412,50 @@ func (t *TidalDownloader) SearchTrackByMetadataWithISRC(trackName, artistName, s
 		return nil, fmt.Errorf("no tracks found for any search query")
 	}
 
-	// Priority 1: Match by ISRC (exact match)
+	// Priority 1: Match by ISRC (exact match) WITH title verification
 	if spotifyISRC != "" {
+		var isrcMatches []*TidalTrack
 		for i := range allTracks {
 			track := &allTracks[i]
 			if track.ISRC == spotifyISRC {
-				return track, nil
+				isrcMatches = append(isrcMatches, track)
 			}
 		}
+		
+		if len(isrcMatches) > 0 {
+			// Verify duration first (most important check)
+			if expectedDuration > 0 {
+				var durationVerifiedMatches []*TidalTrack
+				for _, track := range isrcMatches {
+					durationDiff := track.Duration - expectedDuration
+					if durationDiff < 0 {
+						durationDiff = -durationDiff
+					}
+					// Allow 30 seconds tolerance for duration
+					if durationDiff <= 30 {
+						durationVerifiedMatches = append(durationVerifiedMatches, track)
+					}
+				}
+				
+				if len(durationVerifiedMatches) > 0 {
+					// Return first duration-verified match
+					fmt.Printf("[Tidal] ISRC match with duration verification: '%s' (expected %ds, found %ds)\n", 
+						durationVerifiedMatches[0].Title, expectedDuration, durationVerifiedMatches[0].Duration)
+					return durationVerifiedMatches[0], nil
+				}
+				
+				// ISRC matches but duration doesn't - this is likely wrong version
+				fmt.Printf("[Tidal] WARNING: ISRC %s found but duration mismatch. Expected=%ds, Found=%ds. Rejecting.\n", 
+					spotifyISRC, expectedDuration, isrcMatches[0].Duration)
+				return nil, fmt.Errorf("ISRC found but duration mismatch: expected %ds, found %ds (likely different version/edit)", 
+					expectedDuration, isrcMatches[0].Duration)
+			}
+			
+			// No duration to verify, just return first ISRC match
+			fmt.Printf("[Tidal] ISRC match (no duration verification): '%s'\n", isrcMatches[0].Title)
+			return isrcMatches[0], nil
+		}
+		
 		// If ISRC was provided but no match found, return error
 		return nil, fmt.Errorf("ISRC mismatch: no track found with ISRC %s on Tidal", spotifyISRC)
 	}
@@ -820,6 +878,9 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		return TidalDownloadResult{FilePath: "EXISTS:" + existingFile}, nil
 	}
 
+	// Convert expected duration from ms to seconds
+	expectedDurationSec := req.DurationMS / 1000
+
 	var track *TidalTrack
 	var err error
 
@@ -831,18 +892,31 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 			trackID, idErr := downloader.GetTrackIDFromURL(tidalURL)
 			if idErr == nil {
 				track, err = downloader.GetTrackInfoByID(trackID)
+				// Verify duration if we have expected duration
+				if track != nil && expectedDurationSec > 0 {
+					durationDiff := track.Duration - expectedDurationSec
+					if durationDiff < 0 {
+						durationDiff = -durationDiff
+					}
+					// Allow 30 seconds tolerance
+					if durationDiff > 30 {
+						fmt.Printf("[Tidal] Duration mismatch from SongLink: expected %ds, got %ds. Rejecting.\n", 
+							expectedDurationSec, track.Duration)
+						track = nil // Reject this match
+					}
+				}
 			}
 		}
 	}
 
-	// Strategy 2: Search by ISRC with multi-strategy fallback
+	// Strategy 2: Search by ISRC with duration verification
 	if track == nil && req.ISRC != "" {
-		track, err = downloader.SearchTrackByMetadataWithISRC(req.TrackName, req.ArtistName, req.ISRC, 0)
+		track, err = downloader.SearchTrackByMetadataWithISRC(req.TrackName, req.ArtistName, req.ISRC, expectedDurationSec)
 	}
 
 	// Strategy 3: Search by metadata only (no ISRC requirement)
 	if track == nil {
-		track, err = downloader.SearchTrackByMetadata(req.TrackName, req.ArtistName)
+		track, err = downloader.SearchTrackByMetadataWithISRC(req.TrackName, req.ArtistName, "", expectedDurationSec)
 	}
 
 	if track == nil {
@@ -851,6 +925,20 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 			errMsg = err.Error()
 		}
 		return TidalDownloadResult{}, fmt.Errorf("tidal search failed: %s", errMsg)
+	}
+
+	// Final duration verification
+	if expectedDurationSec > 0 {
+		durationDiff := track.Duration - expectedDurationSec
+		if durationDiff < 0 {
+			durationDiff = -durationDiff
+		}
+		if durationDiff > 30 {
+			return TidalDownloadResult{}, fmt.Errorf("duration mismatch: expected %ds, found %ds (diff: %ds). Track may be wrong version", 
+				expectedDurationSec, track.Duration, durationDiff)
+		}
+		fmt.Printf("[Tidal] Duration verified: expected %ds, found %ds (diff: %ds)\n", 
+			expectedDurationSec, track.Duration, durationDiff)
 	}
 
 	// Build filename

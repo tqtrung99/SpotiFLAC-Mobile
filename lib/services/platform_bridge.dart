@@ -65,6 +65,7 @@ class PlatformBridge {
     int totalTracks = 1,
     String? releaseDate,
     String? itemId,
+    int durationMs = 0,
   }) async {
     final request = jsonEncode({
       'isrc': isrc,
@@ -85,6 +86,7 @@ class PlatformBridge {
       'total_tracks': totalTracks,
       'release_date': releaseDate ?? '',
       'item_id': itemId ?? '',
+      'duration_ms': durationMs,
     });
     
     final result = await _channel.invokeMethod('downloadTrack', request);
@@ -111,6 +113,7 @@ class PlatformBridge {
     String? releaseDate,
     String preferredService = 'tidal',
     String? itemId,
+    int durationMs = 0,
   }) async {
     final request = jsonEncode({
       'isrc': isrc,
@@ -131,6 +134,7 @@ class PlatformBridge {
       'total_tracks': totalTracks,
       'release_date': releaseDate ?? '',
       'item_id': itemId ?? '',
+      'duration_ms': durationMs,
     });
     
     final result = await _channel.invokeMethod('downloadWithFallback', request);

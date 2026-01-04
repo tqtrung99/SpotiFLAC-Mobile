@@ -132,7 +132,8 @@ type DownloadRequest struct {
 	DiscNumber           int    `json:"disc_number"`
 	TotalTracks          int    `json:"total_tracks"`
 	ReleaseDate          string `json:"release_date"`
-	ItemID               string `json:"item_id"` // Unique ID for progress tracking
+	ItemID               string `json:"item_id"`    // Unique ID for progress tracking
+	DurationMS           int    `json:"duration_ms"` // Expected duration in milliseconds (for verification)
 }
 
 // DownloadResponse represents the result of a download

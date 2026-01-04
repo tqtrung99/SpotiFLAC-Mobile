@@ -567,6 +567,7 @@ func (c *SpotifyMetadataClient) fetchAlbum(ctx context.Context, albumID, token s
 }
 
 func (c *SpotifyMetadataClient) fetchPlaylist(ctx context.Context, playlistID, token string) (*PlaylistResponsePayload, error) {
+	// First request to get playlist info and first batch of tracks
 	var data struct {
 		Name   string  `json:"name"`
 		Images []image `json:"images"`
@@ -577,7 +578,8 @@ func (c *SpotifyMetadataClient) fetchPlaylist(ctx context.Context, playlistID, t
 			Items []struct {
 				Track *trackFull `json:"track"`
 			} `json:"items"`
-			Total int `json:"total"`
+			Total int    `json:"total"`
+			Next  string `json:"next"`
 		} `json:"tracks"`
 	}
 
@@ -591,7 +593,10 @@ func (c *SpotifyMetadataClient) fetchPlaylist(ctx context.Context, playlistID, t
 	info.Owner.Name = data.Name
 	info.Owner.Images = firstImageURL(data.Images)
 
-	tracks := make([]AlbumTrackMetadata, 0, len(data.Tracks.Items))
+	// Pre-allocate with expected capacity
+	tracks := make([]AlbumTrackMetadata, 0, data.Tracks.Total)
+	
+	// Add first batch of tracks
 	for _, item := range data.Tracks.Items {
 		if item.Track == nil {
 			continue
@@ -614,6 +619,55 @@ func (c *SpotifyMetadataClient) fetchPlaylist(ctx context.Context, playlistID, t
 			AlbumURL:    item.Track.Album.ExternalURL.Spotify,
 		})
 	}
+
+	// Fetch remaining tracks using pagination (up to 1000 tracks max)
+	nextURL := data.Tracks.Next
+	maxTracks := 1000
+	
+	for nextURL != "" && len(tracks) < maxTracks {
+		var pageData struct {
+			Items []struct {
+				Track *trackFull `json:"track"`
+			} `json:"items"`
+			Next string `json:"next"`
+		}
+
+		if err := c.getJSON(ctx, nextURL, token, &pageData); err != nil {
+			// Log error but return what we have so far
+			fmt.Printf("[Spotify] Warning: failed to fetch page, returning %d tracks: %v\n", len(tracks), err)
+			break
+		}
+
+		for _, item := range pageData.Items {
+			if item.Track == nil {
+				continue
+			}
+			if len(tracks) >= maxTracks {
+				break
+			}
+			tracks = append(tracks, AlbumTrackMetadata{
+				SpotifyID:   item.Track.ID,
+				Artists:     joinArtists(item.Track.Artists),
+				Name:        item.Track.Name,
+				AlbumName:   item.Track.Album.Name,
+				AlbumArtist: joinArtists(item.Track.Album.Artists),
+				DurationMS:  item.Track.DurationMS,
+				Images:      firstImageURL(item.Track.Album.Images),
+				ReleaseDate: item.Track.Album.ReleaseDate,
+				TrackNumber: item.Track.TrackNumber,
+				TotalTracks: item.Track.Album.TotalTracks,
+				DiscNumber:  item.Track.DiscNumber,
+				ExternalURL: item.Track.ExternalURL.Spotify,
+				ISRC:        item.Track.ExternalID.ISRC,
+				AlbumID:     item.Track.Album.ID,
+				AlbumURL:    item.Track.Album.ExternalURL.Spotify,
+			})
+		}
+
+		nextURL = pageData.Next
+	}
+
+	fmt.Printf("[Spotify] Fetched %d tracks from playlist (total: %d)\n", len(tracks), data.Tracks.Total)
 
 	return &PlaylistResponsePayload{
 		PlaylistInfo: info,

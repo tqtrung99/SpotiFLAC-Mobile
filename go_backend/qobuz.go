@@ -112,8 +112,96 @@ func (q *QobuzDownloader) SearchTrackByISRC(isrc string) (*QobuzTrack, error) {
 	return nil, fmt.Errorf("no exact ISRC match found for: %s", isrc)
 }
 
+// SearchTrackByISRCWithTitle searches for a track by ISRC with duration verification
+// expectedDurationSec is the expected duration in seconds (0 to skip verification)
+func (q *QobuzDownloader) SearchTrackByISRCWithDuration(isrc string, expectedDurationSec int) (*QobuzTrack, error) {
+	apiBase, _ := base64.StdEncoding.DecodeString("aHR0cHM6Ly93d3cucW9idXouY29tL2FwaS5qc29uLzAuMi90cmFjay9zZWFyY2g/cXVlcnk9")
+	searchURL := fmt.Sprintf("%s%s&limit=50&app_id=%s", string(apiBase), url.QueryEscape(isrc), q.appID)
+
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := DoRequestWithUserAgent(q.client, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("search failed: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Tracks struct {
+			Items []QobuzTrack `json:"items"`
+		} `json:"tracks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	// Find ISRC matches
+	var isrcMatches []*QobuzTrack
+	for i := range result.Tracks.Items {
+		if result.Tracks.Items[i].ISRC == isrc {
+			isrcMatches = append(isrcMatches, &result.Tracks.Items[i])
+		}
+	}
+
+	if len(isrcMatches) > 0 {
+		// Verify duration if provided
+		if expectedDurationSec > 0 {
+			var durationVerifiedMatches []*QobuzTrack
+			for _, track := range isrcMatches {
+				durationDiff := track.Duration - expectedDurationSec
+				if durationDiff < 0 {
+					durationDiff = -durationDiff
+				}
+				// Allow 30 seconds tolerance
+				if durationDiff <= 30 {
+					durationVerifiedMatches = append(durationVerifiedMatches, track)
+				}
+			}
+			
+			if len(durationVerifiedMatches) > 0 {
+				fmt.Printf("[Qobuz] ISRC match with duration verification: '%s' (expected %ds, found %ds)\n", 
+					durationVerifiedMatches[0].Title, expectedDurationSec, durationVerifiedMatches[0].Duration)
+				return durationVerifiedMatches[0], nil
+			}
+			
+			// ISRC matches but duration doesn't
+			fmt.Printf("[Qobuz] WARNING: ISRC %s found but duration mismatch. Expected=%ds, Found=%ds. Rejecting.\n", 
+				isrc, expectedDurationSec, isrcMatches[0].Duration)
+			return nil, fmt.Errorf("ISRC found but duration mismatch: expected %ds, found %ds (likely different version)", 
+				expectedDurationSec, isrcMatches[0].Duration)
+		}
+		
+		// No duration to verify, return first match
+		fmt.Printf("[Qobuz] ISRC match (no duration verification): '%s'\n", isrcMatches[0].Title)
+		return isrcMatches[0], nil
+	}
+
+	if len(result.Tracks.Items) == 0 {
+		return nil, fmt.Errorf("no tracks found for ISRC: %s", isrc)
+	}
+
+	return nil, fmt.Errorf("no exact ISRC match found for: %s", isrc)
+}
+
+// SearchTrackByISRCWithTitle is deprecated, use SearchTrackByISRCWithDuration instead
+func (q *QobuzDownloader) SearchTrackByISRCWithTitle(isrc, expectedTitle string) (*QobuzTrack, error) {
+	return q.SearchTrackByISRCWithDuration(isrc, 0)
+}
+
 // SearchTrackByMetadata searches for a track using artist name and track name
 func (q *QobuzDownloader) SearchTrackByMetadata(trackName, artistName string) (*QobuzTrack, error) {
+	return q.SearchTrackByMetadataWithDuration(trackName, artistName, 0)
+}
+
+// SearchTrackByMetadataWithDuration searches for a track with duration verification
+func (q *QobuzDownloader) SearchTrackByMetadataWithDuration(trackName, artistName string, expectedDurationSec int) (*QobuzTrack, error) {
 	apiBase, _ := base64.StdEncoding.DecodeString("aHR0cHM6Ly93d3cucW9idXouY29tL2FwaS5qc29uLzAuMi90cmFjay9zZWFyY2g/cXVlcnk9")
 
 	// Try multiple search strategies
@@ -128,6 +216,8 @@ func (q *QobuzDownloader) SearchTrackByMetadata(trackName, artistName string) (*
 	if trackName != "" {
 		queries = append(queries, trackName)
 	}
+
+	var allTracks []QobuzTrack
 
 	for _, query := range queries {
 		searchURL := fmt.Sprintf("%s%s&limit=50&app_id=%s", string(apiBase), url.QueryEscape(query), q.appID)
@@ -159,19 +249,50 @@ func (q *QobuzDownloader) SearchTrackByMetadata(trackName, artistName string) (*
 		resp.Body.Close()
 
 		if len(result.Tracks.Items) > 0 {
-			// Return first result with best quality
-			for i := range result.Tracks.Items {
-				track := &result.Tracks.Items[i]
+			allTracks = append(allTracks, result.Tracks.Items...)
+		}
+	}
+
+	if len(allTracks) == 0 {
+		return nil, fmt.Errorf("no tracks found for: %s - %s", artistName, trackName)
+	}
+
+	// If duration verification is requested
+	if expectedDurationSec > 0 {
+		var durationMatches []*QobuzTrack
+		for i := range allTracks {
+			track := &allTracks[i]
+			durationDiff := track.Duration - expectedDurationSec
+			if durationDiff < 0 {
+				durationDiff = -durationDiff
+			}
+			if durationDiff <= 30 {
+				durationMatches = append(durationMatches, track)
+			}
+		}
+
+		if len(durationMatches) > 0 {
+			// Return best quality among duration matches
+			for _, track := range durationMatches {
 				if track.MaximumBitDepth >= 24 {
 					return track, nil
 				}
 			}
-			// Return first result if no hi-res found
-			return &result.Tracks.Items[0], nil
+			return durationMatches[0], nil
 		}
+
+		// No duration match found
+		return nil, fmt.Errorf("no tracks found with matching duration (expected %ds)", expectedDurationSec)
 	}
 
-	return nil, fmt.Errorf("no tracks found for: %s - %s", artistName, trackName)
+	// No duration verification, return best quality
+	for i := range allTracks {
+		track := &allTracks[i]
+		if track.MaximumBitDepth >= 24 {
+			return track, nil
+		}
+	}
+	return &allTracks[0], nil
 }
 
 // getQobuzDownloadURLSequential requests download URL from APIs sequentially
@@ -321,17 +442,20 @@ func downloadFromQobuz(req DownloadRequest) (QobuzDownloadResult, error) {
 		return QobuzDownloadResult{FilePath: "EXISTS:" + existingFile}, nil
 	}
 
+	// Convert expected duration from ms to seconds
+	expectedDurationSec := req.DurationMS / 1000
+
 	var track *QobuzTrack
 	var err error
 
-	// Strategy 1: Search by ISRC
+	// Strategy 1: Search by ISRC with duration verification
 	if req.ISRC != "" {
-		track, err = downloader.SearchTrackByISRC(req.ISRC)
+		track, err = downloader.SearchTrackByISRCWithDuration(req.ISRC, expectedDurationSec)
 	}
 
-	// Strategy 2: Search by metadata
+	// Strategy 2: Search by metadata with duration verification
 	if track == nil {
-		track, err = downloader.SearchTrackByMetadata(req.TrackName, req.ArtistName)
+		track, err = downloader.SearchTrackByMetadataWithDuration(req.TrackName, req.ArtistName, expectedDurationSec)
 	}
 
 	if track == nil {
@@ -340,6 +464,20 @@ func downloadFromQobuz(req DownloadRequest) (QobuzDownloadResult, error) {
 			errMsg = err.Error()
 		}
 		return QobuzDownloadResult{}, fmt.Errorf("qobuz search failed: %s", errMsg)
+	}
+
+	// Final duration verification
+	if expectedDurationSec > 0 {
+		durationDiff := track.Duration - expectedDurationSec
+		if durationDiff < 0 {
+			durationDiff = -durationDiff
+		}
+		if durationDiff > 30 {
+			return QobuzDownloadResult{}, fmt.Errorf("duration mismatch: expected %ds, found %ds (diff: %ds). Track may be wrong version", 
+				expectedDurationSec, track.Duration, durationDiff)
+		}
+		fmt.Printf("[Qobuz] Duration verified: expected %ds, found %ds (diff: %ds)\n", 
+			expectedDurationSec, track.Duration, durationDiff)
 	}
 
 	// Build filename

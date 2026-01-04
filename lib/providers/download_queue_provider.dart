@@ -1007,6 +1007,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           releaseDate: item.track.releaseDate,
           preferredService: item.service,
           itemId: item.id, // Pass item ID for progress tracking
+          durationMs: item.track.duration, // Duration in ms for verification
         );
       } else {
         result = await PlatformBridge.downloadTrack(
@@ -1025,6 +1026,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           discNumber: item.track.discNumber ?? 1,
           releaseDate: item.track.releaseDate,
           itemId: item.id, // Pass item ID for progress tracking
+          durationMs: item.track.duration, // Duration in ms for verification
         );
       }
       
