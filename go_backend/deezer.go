@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	deezerSearchURL  = "https://api.deezer.com/search"
-	deezerTrackURL   = "https://api.deezer.com/track/%s"
-	deezerAlbumURL   = "https://api.deezer.com/album/%s"
-	deezerArtistURL  = "https://api.deezer.com/artist/%s"
-	deezerPlaylistURL = "https://api.deezer.com/playlist/%s"
+	deezerBaseURL     = "https://api.deezer.com/2.0"
+	deezerSearchURL   = deezerBaseURL + "/search"
+	deezerTrackURL    = deezerBaseURL + "/track/%s"
+	deezerAlbumURL    = deezerBaseURL + "/album/%s"
+	deezerArtistURL   = deezerBaseURL + "/artist/%s"
+	deezerPlaylistURL = deezerBaseURL + "/playlist/%s"
 	
 	deezerCacheTTL = 10 * time.Minute
 )
@@ -152,7 +153,14 @@ func (c *DeezerClient) SearchAll(ctx context.Context, query string, trackLimit, 
 	}
 
 	for _, track := range trackResp.Data {
-		result.Tracks = append(result.Tracks, c.convertTrack(track))
+		// Fetch full track info to get ISRC (search results don't include ISRC)
+		fullTrack, err := c.fetchFullTrack(ctx, fmt.Sprintf("%d", track.ID))
+		if err == nil && fullTrack != nil {
+			result.Tracks = append(result.Tracks, c.convertTrack(*fullTrack))
+		} else {
+			// Fallback to search result without ISRC
+			result.Tracks = append(result.Tracks, c.convertTrack(track))
+		}
 	}
 
 	// Search artists
@@ -423,23 +431,36 @@ func (c *DeezerClient) GetPlaylist(ctx context.Context, playlistID string) (*Pla
 	}, nil
 }
 
-// SearchByISRC searches for a track by ISRC
+// SearchByISRC searches for a track by ISRC using direct endpoint
 func (c *DeezerClient) SearchByISRC(ctx context.Context, isrc string) (*TrackMetadata, error) {
-	searchURL := fmt.Sprintf("%s/track?q=isrc:%s&limit=1", deezerSearchURL, isrc)
+	// Use direct ISRC endpoint (API 2.0)
+	// https://api.deezer.com/2.0/track/isrc:{ISRC}
+	directURL := fmt.Sprintf("%s/track/isrc:%s", deezerBaseURL, isrc)
 	
-	var resp struct {
-		Data []deezerTrack `json:"data"`
-	}
-	if err := c.getJSON(ctx, searchURL, &resp); err != nil {
-		return nil, err
+	var track deezerTrack
+	if err := c.getJSON(ctx, directURL, &track); err != nil {
+		// Fallback to search if direct endpoint fails
+		searchURL := fmt.Sprintf("%s/track?q=isrc:%s&limit=1", deezerSearchURL, isrc)
+		var resp struct {
+			Data []deezerTrack `json:"data"`
+		}
+		if err := c.getJSON(ctx, searchURL, &resp); err != nil {
+			return nil, err
+		}
+		if len(resp.Data) == 0 {
+			return nil, fmt.Errorf("no track found for ISRC: %s", isrc)
+		}
+		result := c.convertTrack(resp.Data[0])
+		return &result, nil
 	}
 
-	if len(resp.Data) == 0 {
+	// Check if we got a valid response (ID > 0)
+	if track.ID == 0 {
 		return nil, fmt.Errorf("no track found for ISRC: %s", isrc)
 	}
 
-	track := c.convertTrack(resp.Data[0])
-	return &track, nil
+	result := c.convertTrack(track)
+	return &result, nil
 }
 
 func (c *DeezerClient) fetchFullTrack(ctx context.Context, trackID string) (*deezerTrack, error) {

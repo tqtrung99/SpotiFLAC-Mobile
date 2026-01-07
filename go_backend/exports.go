@@ -276,10 +276,10 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 	req.OutputDir = strings.TrimSpace(req.OutputDir)
 	
 	// Build service order starting with preferred service
-	allServices := []string{"tidal", "qobuz", "amazon"}
+	allServices := []string{"qobuz", "tidal", "amazon"}
 	preferredService := req.Service
 	if preferredService == "" {
-		preferredService = "tidal"
+		preferredService = "qobuz"
 	}
 	
 	fmt.Printf("[DownloadWithFallback] Preferred service from request: '%s'\n", req.Service)

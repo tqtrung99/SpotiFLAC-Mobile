@@ -111,7 +111,7 @@ class PlatformBridge {
     int discNumber = 1,
     int totalTracks = 1,
     String? releaseDate,
-    String preferredService = 'tidal',
+    String preferredService = 'qobuz',
     String? itemId,
     int durationMs = 0,
   }) async {
