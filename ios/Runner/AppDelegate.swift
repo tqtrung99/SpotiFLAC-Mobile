@@ -181,6 +181,66 @@ import Gobackend  // Import Go framework
             GobackendCleanupConnections()
             return nil
             
+        case "searchDeezerAll":
+            let args = call.arguments as! [String: Any]
+            let query = args["query"] as! String
+            let trackLimit = args["track_limit"] as? Int ?? 15
+            let artistLimit = args["artist_limit"] as? Int ?? 3
+            let response = GobackendSearchDeezerAll(query, Int(trackLimit), Int(artistLimit), &error)
+            if let error = error { throw error }
+            return response
+
+        case "getDeezerMetadata":
+            let args = call.arguments as! [String: Any]
+            let resourceType = args["resource_type"] as! String
+            let resourceId = args["resource_id"] as! String
+            let response = GobackendGetDeezerMetadata(resourceType, resourceId, &error)
+            if let error = error { throw error }
+            return response
+
+        case "parseDeezerUrl":
+            let args = call.arguments as! [String: Any]
+            let url = args["url"] as! String
+            let response = GobackendParseDeezerUrl(url, &error)
+            if let error = error { throw error }
+            return response
+
+        case "searchDeezerByISRC":
+            let args = call.arguments as! [String: Any]
+            let isrc = args["isrc"] as! String
+            let response = GobackendSearchDeezerByISRC(isrc, &error)
+            if let error = error { throw error }
+            return response
+
+        case "convertSpotifyToDeezer":
+            let args = call.arguments as! [String: Any]
+            let resourceType = args["resource_type"] as! String
+            let spotifyId = args["spotify_id"] as! String
+            let response = GobackendConvertSpotifyToDeezer(resourceType, spotifyId, &error)
+            if let error = error { throw error }
+            return response
+
+        case "getSpotifyMetadataWithFallback":
+            let args = call.arguments as! [String: Any]
+            let url = args["url"] as! String
+            let response = GobackendGetSpotifyMetadataWithFallback(url, &error)
+            if let error = error { throw error }
+            return response
+            
+        case "preWarmTrackCache":
+            let args = call.arguments as! [String: Any]
+            let tracksJson = args["tracks"] as! String
+            GobackendPreWarmTrackCache(tracksJson)
+            return nil
+            
+        case "getTrackCacheSize":
+            let response = GobackendGetTrackCacheSize()
+            return response
+            
+        case "clearTrackCache":
+            GobackendClearTrackCache()
+            return nil
+            
         default:
             throw NSError(
                 domain: "SpotiFLAC",
