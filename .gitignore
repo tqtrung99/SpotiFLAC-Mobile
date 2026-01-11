@@ -13,6 +13,9 @@ Thumbs.db
 # Reference folder (development only)
 referensi/
 
+# Documentation (hosted separately)
+docs/
+
 # Old spotiflac_android folder (moved to root)
 spotiflac_android/
 
