@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.9] - 2026-01-12
+
+### Fixed
+
+- **Duplicate History Entries**: Fixed duplicate entries when re-downloading same track
+  - Detects existing entries by Spotify ID, Deezer ID, or ISRC
+  - Replaces existing entry and moves to top of list
+  - Auto-deduplicates existing history on app load
+
+---
+
 ## [2.2.8] - 2026-01-12
 
 ### Added
