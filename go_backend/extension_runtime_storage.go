@@ -134,12 +134,48 @@ func (r *ExtensionRuntime) getCredentialsPath() string {
 	return filepath.Join(r.dataDir, ".credentials.enc")
 }
 
-// getEncryptionKey derives an encryption key from extension ID
-func (r *ExtensionRuntime) getEncryptionKey() []byte {
-	// Use SHA256 of extension ID + salt as encryption key
-	salt := "spotiflac-ext-cred-v1"
-	hash := sha256.Sum256([]byte(r.extensionID + salt))
-	return hash[:]
+// getSaltPath returns the path to the extension's encryption salt file
+func (r *ExtensionRuntime) getSaltPath() string {
+	return filepath.Join(r.dataDir, ".cred_salt")
+}
+
+// getOrCreateSalt gets existing salt or creates a new random one
+func (r *ExtensionRuntime) getOrCreateSalt() ([]byte, error) {
+	saltPath := r.getSaltPath()
+
+	// Try to read existing salt
+	salt, err := os.ReadFile(saltPath)
+	if err == nil && len(salt) == 32 {
+		return salt, nil
+	}
+
+	// Generate new random salt (32 bytes)
+	salt = make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	// Save salt to file
+	if err := os.WriteFile(saltPath, salt, 0600); err != nil {
+		return nil, fmt.Errorf("failed to save salt: %w", err)
+	}
+
+	return salt, nil
+}
+
+// getEncryptionKey derives an encryption key from extension ID + random salt
+func (r *ExtensionRuntime) getEncryptionKey() ([]byte, error) {
+	// Get or create per-installation random salt
+	salt, err := r.getOrCreateSalt()
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine extension ID + random salt for key derivation
+	// This makes each installation unique, preventing mass decryption attacks
+	combined := append([]byte(r.extensionID), salt...)
+	hash := sha256.Sum256(combined)
+	return hash[:], nil
 }
 
 // loadCredentials loads and decrypts credentials from disk
@@ -154,7 +190,10 @@ func (r *ExtensionRuntime) loadCredentials() (map[string]interface{}, error) {
 	}
 
 	// Decrypt the data
-	key := r.getEncryptionKey()
+	key, err := r.getEncryptionKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get encryption key: %w", err)
+	}
 	decrypted, err := decryptAES(data, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
@@ -176,7 +215,10 @@ func (r *ExtensionRuntime) saveCredentials(creds map[string]interface{}) error {
 	}
 
 	// Encrypt the data
-	key := r.getEncryptionKey()
+	key, err := r.getEncryptionKey()
+	if err != nil {
+		return fmt.Errorf("failed to get encryption key: %w", err)
+	}
 	encrypted, err := encryptAES(data, key)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt credentials: %w", err)
