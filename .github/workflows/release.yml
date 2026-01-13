@@ -345,6 +345,8 @@ jobs:
             CHANGELOG="See CHANGELOG.md for details."
           else
             echo "Found changelog content"
+            # Remove trailing --- separator if present (CHANGELOG uses --- between versions)
+            CHANGELOG=$(echo "$CHANGELOG" | sed '/^---$/d')
           fi
 
           # Save to file for multiline support
