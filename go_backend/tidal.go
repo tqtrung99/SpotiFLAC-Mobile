@@ -1520,7 +1520,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		}
 	}
 
-	// Strategy 2: Try SongLink only if ISRC search failed (slower but more accurate)
+	// Strategy 2: Try SongLink if we have Spotify ID
 	if track == nil && req.SpotifyID != "" {
 		GoLog("[Tidal] ISRC search failed, trying SongLink...\n")
 		var tidalURL string

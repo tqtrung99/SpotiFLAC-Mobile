@@ -47,6 +47,7 @@ type ExtAlbumMetadata struct {
 	CoverURL    string             `json:"cover_url,omitempty"`
 	ReleaseDate string             `json:"release_date,omitempty"`
 	TotalTracks int                `json:"total_tracks"`
+	AlbumType   string             `json:"album_type,omitempty"`
 	Tracks      []ExtTrackMetadata `json:"tracks"`
 	ProviderID  string             `json:"provider_id"`
 }
@@ -312,6 +313,72 @@ func (p *ExtensionProviderWrapper) GetArtist(artistID string) (*ExtArtistMetadat
 
 	artist.ProviderID = p.extension.ID
 	return &artist, nil
+}
+
+// EnrichTrack enriches track metadata before download (e.g., fetch real ISRC)
+// This is called lazily when download starts, not when playlist/album is loaded
+// Extension should implement enrichTrack(track) function that returns enriched track
+func (p *ExtensionProviderWrapper) EnrichTrack(track *ExtTrackMetadata) (*ExtTrackMetadata, error) {
+	if !p.extension.Manifest.IsMetadataProvider() {
+		return track, nil // Not a metadata provider, return as-is
+	}
+
+	if !p.extension.Enabled {
+		return track, nil // Extension disabled, return as-is
+	}
+
+	// Convert track to JSON for passing to JS
+	trackJSON, err := json.Marshal(track)
+	if err != nil {
+		GoLog("[Extension] EnrichTrack: failed to marshal track: %v\n", err)
+		return track, nil // Return original on error
+	}
+
+	script := fmt.Sprintf(`
+		(function() {
+			if (typeof extension !== 'undefined' && typeof extension.enrichTrack === 'function') {
+				var track = %s;
+				return extension.enrichTrack(track);
+			}
+			return null;
+		})()
+	`, string(trackJSON))
+
+	result, err := RunWithTimeoutAndRecover(p.vm, script, DefaultJSTimeout)
+	if err != nil {
+		if IsTimeoutError(err) {
+			GoLog("[Extension] EnrichTrack timeout for %s\n", p.extension.ID)
+		} else {
+			GoLog("[Extension] EnrichTrack error for %s: %v\n", p.extension.ID, err)
+		}
+		return track, nil // Return original on error
+	}
+
+	// If extension doesn't implement enrichTrack or returns null, return original
+	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
+		return track, nil
+	}
+
+	exported := result.Export()
+	jsonBytes, err := json.Marshal(exported)
+	if err != nil {
+		GoLog("[Extension] EnrichTrack: failed to marshal result: %v\n", err)
+		return track, nil
+	}
+
+	var enrichedTrack ExtTrackMetadata
+	if err := json.Unmarshal(jsonBytes, &enrichedTrack); err != nil {
+		GoLog("[Extension] EnrichTrack: failed to parse enriched track: %v\n", err)
+		return track, nil
+	}
+
+	// Preserve provider ID
+	enrichedTrack.ProviderID = track.ProviderID
+
+	GoLog("[Extension] EnrichTrack: enriched track from %s (ISRC: %s -> %s)\n",
+		p.extension.ID, track.ISRC, enrichedTrack.ISRC)
+
+	return &enrichedTrack, nil
 }
 
 // ==================== Download Provider Methods ====================
@@ -623,6 +690,45 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 
 	var lastErr error
 	var skipBuiltIn bool // If source extension has skipBuiltInFallback, don't try built-in providers
+
+	// LAZY ENRICHMENT: If track came from an extension, try to enrich metadata (e.g., get real ISRC)
+	// This is done lazily at download time, not when playlist/album is loaded
+	if req.Source != "" && !isBuiltInProvider(req.Source) {
+		ext, err := extManager.GetExtension(req.Source)
+		if err == nil && ext.Enabled && ext.Error == "" && ext.Manifest.IsMetadataProvider() {
+			GoLog("[DownloadWithExtensionFallback] Enriching track from extension '%s'...\n", req.Source)
+
+			provider := NewExtensionProviderWrapper(ext)
+			trackMeta := &ExtTrackMetadata{
+				ID:          req.SpotifyID,
+				Name:        req.TrackName,
+				Artists:     req.ArtistName,
+				AlbumName:   req.AlbumName,
+				DurationMS:  req.DurationMS,
+				ISRC:        req.ISRC,
+				ReleaseDate: req.ReleaseDate,
+				TrackNumber: req.TrackNumber,
+				DiscNumber:  req.DiscNumber,
+				ProviderID:  req.Source,
+			}
+
+			enrichedTrack, err := provider.EnrichTrack(trackMeta)
+			if err == nil && enrichedTrack != nil {
+				// Update request with enriched data
+				if enrichedTrack.ISRC != "" && enrichedTrack.ISRC != req.ISRC {
+					GoLog("[DownloadWithExtensionFallback] ISRC enriched: %s -> %s\n", req.ISRC, enrichedTrack.ISRC)
+					req.ISRC = enrichedTrack.ISRC
+				}
+				// Can also update other fields if needed
+				if enrichedTrack.Name != "" {
+					req.TrackName = enrichedTrack.Name
+				}
+				if enrichedTrack.Artists != "" {
+					req.ArtistName = enrichedTrack.Artists
+				}
+			}
+		}
+	}
 
 	// If source extension is specified, try it first before the priority list
 	if req.Source != "" && !isBuiltInProvider(req.Source) {

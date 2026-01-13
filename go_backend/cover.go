@@ -9,9 +9,19 @@ import (
 
 // Spotify image size codes (same as PC version)
 const (
-	spotifySize640 = "ab67616d0000b273" // 640x640
+	spotifySize300 = "ab67616d00001e02" // 300x300 (small)
+	spotifySize640 = "ab67616d0000b273" // 640x640 (medium)
 	spotifySizeMax = "ab67616d000082c1" // Max resolution (~2000x2000)
 )
+
+// convertSmallToMedium upgrades 300x300 cover URL to 640x640
+// Same logic as PC version for consistency
+func convertSmallToMedium(imageURL string) string {
+	if strings.Contains(imageURL, spotifySize300) {
+		return strings.Replace(imageURL, spotifySize300, spotifySize640, 1)
+	}
+	return imageURL
+}
 
 // downloadCoverToMemory downloads cover art and returns as bytes (no file creation)
 // This avoids file permission issues on Android
@@ -22,11 +32,17 @@ func downloadCoverToMemory(coverURL string, maxQuality bool) ([]byte, error) {
 
 	fmt.Printf("[Cover] Downloading cover from: %s\n", coverURL)
 
-	// Upgrade to max quality if requested
-	downloadURL := coverURL
+	// First upgrade small (300) to medium (640) - always do this
+	downloadURL := convertSmallToMedium(coverURL)
+	if downloadURL != coverURL {
+		fmt.Printf("[Cover] Upgraded 300x300 to 640x640: %s\n", downloadURL)
+	}
+
+	// Then upgrade to max quality if requested
 	if maxQuality {
-		downloadURL = upgradeToMaxQuality(coverURL)
-		if downloadURL != coverURL {
+		maxURL := upgradeToMaxQuality(downloadURL)
+		if maxURL != downloadURL {
+			downloadURL = maxURL
 			fmt.Printf("[Cover] Upgraded to max quality URL: %s\n", downloadURL)
 		}
 	}
@@ -93,9 +109,12 @@ func GetCoverFromSpotify(imageURL string, maxQuality bool) string {
 		return ""
 	}
 
+	// Always upgrade small to medium first
+	result := convertSmallToMedium(imageURL)
+
 	if maxQuality {
-		return upgradeToMaxQuality(imageURL)
+		result = upgradeToMaxQuality(result)
 	}
 
-	return imageURL
+	return result
 }

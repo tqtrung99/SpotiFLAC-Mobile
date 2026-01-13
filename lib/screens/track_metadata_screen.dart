@@ -34,7 +34,13 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Future<void> _checkFile() async {
-    final file = File(widget.item.filePath);
+    // Strip EXISTS: prefix from legacy history items
+    var filePath = widget.item.filePath;
+    if (filePath.startsWith('EXISTS:')) {
+      filePath = filePath.substring(7);
+    }
+    
+    final file = File(filePath);
     final exists = await file.exists();
     int? size;
     
@@ -67,6 +73,12 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   int? get discNumber => item.discNumber;
   String? get releaseDate => item.releaseDate;
   String? get isrc => item.isrc;
+  
+  // Clean filePath - strip EXISTS: prefix from legacy history items
+  String get cleanFilePath {
+    final path = item.filePath;
+    return path.startsWith('EXISTS:') ? path.substring(7) : path;
+  }
   int? get bitDepth => item.bitDepth;
   int? get sampleRate => item.sampleRate;
 
@@ -515,7 +527,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Widget _buildFileInfoCard(BuildContext context, ColorScheme colorScheme, bool fileExists, int? fileSize) {
-    final fileName = item.filePath.split(Platform.pathSeparator).last;
+    final fileName = cleanFilePath.split(Platform.pathSeparator).last;
     final fileExtension = fileName.contains('.') ? fileName.split('.').last.toUpperCase() : 'Unknown';
     
     return Card(
@@ -631,7 +643,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
             
             // File path
             InkWell(
-              onTap: () => _copyToClipboard(context, item.filePath),
+              onTap: () => _copyToClipboard(context, cleanFilePath),
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: const EdgeInsets.all(12),
@@ -643,7 +655,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        item.filePath,
+                        cleanFilePath,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontFamily: 'monospace',
                           color: colorScheme.onSurfaceVariant,
@@ -776,7 +788,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         item.spotifyId ?? '',
         item.trackName,
         item.artistName,
-        filePath: _fileExists ? item.filePath : null, // Try embedded lyrics first
+        filePath: _fileExists ? cleanFilePath : null, // Try embedded lyrics first
       ).timeout(
         const Duration(seconds: 20),
         onTimeout: () => '', // Return empty string on timeout
@@ -833,7 +845,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         Expanded(
           flex: 2,
           child: FilledButton.icon(
-            onPressed: fileExists ? () => _openFile(context, item.filePath) : null,
+            onPressed: fileExists ? () => _openFile(context, cleanFilePath) : null,
             icon: const Icon(Icons.play_arrow),
             label: const Text('Play'),
             style: FilledButton.styleFrom(
@@ -890,7 +902,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
               title: const Text('Copy file path'),
               onTap: () {
                 Navigator.pop(context);
-                _copyToClipboard(context, item.filePath);
+                _copyToClipboard(context, cleanFilePath);
               },
             ),
             ListTile(
@@ -933,7 +945,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
             onPressed: () async {
               // Delete the file first
               try {
-                final file = File(item.filePath);
+                final file = File(cleanFilePath);
                 if (await file.exists()) {
                   await file.delete();
                 }
@@ -984,7 +996,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Future<void> _shareFile(BuildContext context) async {
-    final file = File(item.filePath);
+    final file = File(cleanFilePath);
     if (!await file.exists()) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -996,7 +1008,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(item.filePath)],
+        files: [XFile(cleanFilePath)],
         text: '${item.trackName} - ${item.artistName}',
       ),
     );

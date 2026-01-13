@@ -1,5 +1,34 @@
 # Changelog
 
+## [3.0.0-beta.2] - 2026-01-13
+
+### Fixed
+
+- **Max Resolution Cover Download**: Fixed cover not upgrading to max resolution on mobile
+  - Added missing `spotifySize300` constant (300x300 size code)
+  - Mobile now correctly upgrades 300x300 → 640x640 → max resolution (~2000x2000)
+  - Matches PC version behavior when "Download max resolution song cover" is enabled
+
+- **EXISTS: Prefix in File Path**: Fixed "File not found" error in metadata screen after download
+  - Duplicate detection was adding `EXISTS:` prefix to file paths
+  - Prefix now stripped before saving to download history
+  - Legacy history items with prefix are handled gracefully
+
+- **History Error Badge**: Fixed error badge showing on history items even when file exists
+  - `queue_tab.dart` now strips `EXISTS:` prefix before checking file existence
+  - File open and delete operations also use cleaned path
+
+- **Extension Artist URL Handler**: Fixed artist pages showing "0 releases" from extensions
+  - Extension `fetchArtist` now returns correct format: `{ type: "artist", artist: { albums } }`
+  - Go backend `HandleURLWithExtensionJSON` now includes albums in artist response
+  - Added `AlbumType` field to `ExtAlbumMetadata` struct
+
+- **Extension Artist Name in Logs**: Fixed empty artist name in extension track logs
+  - Now uses `firstArtist` + `otherArtists` instead of deprecated `artists.items`
+  - Logs correctly show "Fetched track: {title} by {artist}"
+
+---
+
 ## [3.0.0-beta.1] - 2026-01-13
 
 ### Security

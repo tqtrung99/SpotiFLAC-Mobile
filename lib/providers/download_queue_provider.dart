@@ -1557,6 +1557,12 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       if (result['success'] == true) {
         var filePath = result['file_path'] as String?;
+        
+        // Strip EXISTS: prefix from duplicate detection
+        if (filePath != null && filePath.startsWith('EXISTS:')) {
+          filePath = filePath.substring(7); // Remove "EXISTS:" prefix
+        }
+        
         _log.i('Download success, file: $filePath');
 
         // Get actual quality from response (if available)

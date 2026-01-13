@@ -1440,6 +1440,41 @@ func GetAllPendingFFmpegCommandsJSON() (string, error) {
 
 // ==================== EXTENSION CUSTOM SEARCH ====================
 
+// EnrichTrackWithExtensionJSON enriches track metadata using the source extension
+// This is called lazily before download starts, allowing extension to fetch real ISRC etc.
+func EnrichTrackWithExtensionJSON(extensionID, trackJSON string) (string, error) {
+	manager := GetExtensionManager()
+	ext, err := manager.GetExtension(extensionID)
+	if err != nil {
+		// Extension not found, return original track
+		return trackJSON, nil
+	}
+
+	if !ext.Manifest.IsMetadataProvider() {
+		// Not a metadata provider, return original
+		return trackJSON, nil
+	}
+
+	var track ExtTrackMetadata
+	if err := json.Unmarshal([]byte(trackJSON), &track); err != nil {
+		return trackJSON, fmt.Errorf("failed to parse track: %w", err)
+	}
+
+	provider := NewExtensionProviderWrapper(ext)
+	enrichedTrack, err := provider.EnrichTrack(&track)
+	if err != nil {
+		// Error enriching, return original
+		return trackJSON, nil
+	}
+
+	jsonBytes, err := json.Marshal(enrichedTrack)
+	if err != nil {
+		return trackJSON, nil
+	}
+
+	return string(jsonBytes), nil
+}
+
 // CustomSearchWithExtensionJSON performs custom search using an extension
 func CustomSearchWithExtensionJSON(extensionID, query string, optionsJSON string) (string, error) {
 	manager := GetExtensionManager()
@@ -1597,11 +1632,34 @@ func HandleURLWithExtensionJSON(url string) (string, error) {
 
 	// Add artist info if present
 	if result.Artist != nil {
-		response["artist"] = map[string]interface{}{
+		artistResponse := map[string]interface{}{
 			"id":        result.Artist.ID,
 			"name":      result.Artist.Name,
 			"image_url": result.Artist.ImageURL,
 		}
+
+		// Add albums if present
+		if len(result.Artist.Albums) > 0 {
+			albums := make([]map[string]interface{}, len(result.Artist.Albums))
+			for i, album := range result.Artist.Albums {
+				albumType := album.AlbumType
+				if albumType == "" {
+					albumType = "album"
+				}
+				albums[i] = map[string]interface{}{
+					"id":           album.ID,
+					"name":         album.Name,
+					"artists":      album.Artists,
+					"images":       album.CoverURL,
+					"release_date": album.ReleaseDate,
+					"total_tracks": album.TotalTracks,
+					"album_type":   albumType,
+				}
+			}
+			artistResponse["albums"] = albums
+		}
+
+		response["artist"] = artistResponse
 	}
 
 	jsonBytes, err := json.Marshal(response)

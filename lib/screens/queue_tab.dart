@@ -115,7 +115,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         final item = items.where((e) => e.id == id).firstOrNull;
         if (item != null) {
           try {
-            final file = File(item.filePath);
+            final cleanPath = _cleanFilePath(item.filePath);
+            final file = File(cleanPath);
             if (await file.exists()) {
               await file.delete();
             }
@@ -135,31 +136,43 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     }
   }
 
+  /// Strip EXISTS: prefix from file path (legacy history items)
+  String _cleanFilePath(String? filePath) {
+    if (filePath == null) return '';
+    if (filePath.startsWith('EXISTS:')) {
+      return filePath.substring(7);
+    }
+    return filePath;
+  }
+
   bool _checkFileExists(String? filePath) {
     if (filePath == null) return false;
-    if (_fileExistsCache.containsKey(filePath)) {
-      return _fileExistsCache[filePath]!;
+    final cleanPath = _cleanFilePath(filePath);
+    if (cleanPath.isEmpty) return false;
+    if (_fileExistsCache.containsKey(cleanPath)) {
+      return _fileExistsCache[cleanPath]!;
     }
-    if (_pendingChecks.contains(filePath)) {
+    if (_pendingChecks.contains(cleanPath)) {
       return true;
     }
     if (_fileExistsCache.length >= _maxCacheSize) {
       _fileExistsCache.remove(_fileExistsCache.keys.first);
     }
-    _pendingChecks.add(filePath);
+    _pendingChecks.add(cleanPath);
     Future.microtask(() async {
-      final exists = await File(filePath).exists();
-      _pendingChecks.remove(filePath);
-      if (mounted && _fileExistsCache[filePath] != exists) {
-        setState(() => _fileExistsCache[filePath] = exists);
+      final exists = await File(cleanPath).exists();
+      _pendingChecks.remove(cleanPath);
+      if (mounted && _fileExistsCache[cleanPath] != exists) {
+        setState(() => _fileExistsCache[cleanPath] = exists);
       }
     });
     return true;
   }
 
   Future<void> _openFile(String filePath) async {
+    final cleanPath = _cleanFilePath(filePath);
     try {
-      await OpenFilex.open(filePath);
+      await OpenFilex.open(cleanPath);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
