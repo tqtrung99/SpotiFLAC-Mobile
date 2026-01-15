@@ -728,21 +728,21 @@ class _LanguageSelector extends StatelessWidget {
           ),
           Row(
             children: [
-              _LanguageChip(
+              _ViewModeChip(
                 icon: Icons.phone_android,
                 label: context.l10n.languageSystem,
                 isSelected: currentLocale == 'system',
                 onTap: () => onChanged('system'),
               ),
               const SizedBox(width: 8),
-              _LanguageChip(
+              _ViewModeChip(
                 icon: Icons.language,
                 label: context.l10n.languageEnglish,
                 isSelected: currentLocale == 'en',
                 onTap: () => onChanged('en'),
               ),
               const SizedBox(width: 8),
-              _LanguageChip(
+              _ViewModeChip(
                 icon: Icons.language,
                 label: context.l10n.languageIndonesian,
                 isSelected: currentLocale == 'id',
@@ -751,87 +751,6 @@ class _LanguageSelector extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LanguageChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _LanguageChip({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final unselectedColor = isDark
-        ? Color.alphaBlend(
-            Colors.white.withValues(alpha: 0.05),
-            colorScheme.surface,
-          )
-        : Color.alphaBlend(
-            Colors.black.withValues(alpha: 0.05),
-            colorScheme.surfaceContainerHighest,
-          );
-
-    return Expanded(
-      child: Container(
-        decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : unselectedColor,
-          borderRadius: BorderRadius.circular(12),
-          border: !isDark && !isSelected
-              ? Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  width: 1,
-                )
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Column(
-                children: [
-                  Icon(
-                    icon,
-                    color: isSelected
-                        ? colorScheme.onPrimaryContainer
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                      color: isSelected
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
