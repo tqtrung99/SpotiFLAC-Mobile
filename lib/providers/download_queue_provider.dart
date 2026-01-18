@@ -1568,6 +1568,35 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       final quality = item.qualityOverride ?? state.audioQuality;
 
+      // Fetch extended metadata (genre, label) from Deezer if available
+      String? genre;
+      String? label;
+      
+      // Try to get Deezer track ID from various sources
+      String? deezerTrackId = trackToDownload.deezerId;
+      if (deezerTrackId == null && trackToDownload.id.startsWith('deezer:')) {
+        deezerTrackId = trackToDownload.id.split(':')[1];
+      }
+      if (deezerTrackId == null && trackToDownload.availability?.deezerId != null) {
+        deezerTrackId = trackToDownload.availability!.deezerId;
+      }
+      
+      if (deezerTrackId != null && deezerTrackId.isNotEmpty) {
+        try {
+          final extendedMetadata = await PlatformBridge.getDeezerExtendedMetadata(deezerTrackId);
+          if (extendedMetadata != null) {
+            genre = extendedMetadata['genre'];
+            label = extendedMetadata['label'];
+            if (genre != null && genre.isNotEmpty) {
+              _log.d('Extended metadata - Genre: $genre, Label: $label');
+            }
+          }
+        } catch (e) {
+          _log.w('Failed to fetch extended metadata from Deezer: $e');
+          // Continue without extended metadata
+        }
+      }
+
       Map<String, dynamic> result;
 
       final extensionState = ref.read(extensionProvider);
@@ -1622,6 +1651,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           itemId: item.id, // Pass item ID for progress tracking
           durationMs:
               trackToDownload.duration, // Duration in ms for verification
+          genre: genre,
+          label: label,
         );
       } else {
         result = await PlatformBridge.downloadTrack(

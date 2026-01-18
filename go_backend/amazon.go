@@ -564,6 +564,9 @@ func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 		TotalTracks: req.TotalTracks,
 		DiscNumber:  actualDiscNum,
 		ISRC:        req.ISRC,
+		Genre:       req.Genre,     // From Deezer album metadata
+		Label:       req.Label,     // From Deezer album metadata
+		Copyright:   req.Copyright, // From Deezer album metadata
 	}
 
 	// Use cover data from parallel fetch

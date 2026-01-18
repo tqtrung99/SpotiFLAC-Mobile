@@ -129,6 +129,10 @@ class PlatformBridge {
     String preferredService = 'tidal',
     String? itemId,
     int durationMs = 0,
+    // Extended metadata for FLAC tagging
+    String? genre,
+    String? label,
+    String? copyright,
   }) async {
     _log.i('downloadWithFallback: "$trackName" by $artistName (preferred: $preferredService)');
     final request = jsonEncode({
@@ -151,6 +155,10 @@ class PlatformBridge {
       'release_date': releaseDate ?? '',
       'item_id': itemId ?? '',
       'duration_ms': durationMs,
+      // Extended metadata
+      'genre': genre ?? '',
+      'label': label ?? '',
+      'copyright': copyright ?? '',
     });
     
     final result = await _channel.invokeMethod('downloadWithFallback', request);
@@ -411,6 +419,25 @@ class PlatformBridge {
     return jsonDecode(result as String) as Map<String, dynamic>;
   }
 
+  /// Get extended metadata (genre, label) from Deezer using track ID
+  /// Returns {"genre": "...", "label": "..."} or null if not found
+  static Future<Map<String, String>?> getDeezerExtendedMetadata(String trackId) async {
+    try {
+      final result = await _channel.invokeMethod('getDeezerExtendedMetadata', {
+        'track_id': trackId,
+      });
+      if (result == null) return null;
+      final data = jsonDecode(result as String) as Map<String, dynamic>;
+      return {
+        'genre': data['genre'] as String? ?? '',
+        'label': data['label'] as String? ?? '',
+      };
+    } catch (e) {
+      _log.w('Failed to get Deezer extended metadata for $trackId: $e');
+      return null;
+    }
+  }
+
   /// Convert Spotify track to Deezer and get metadata (for rate limit fallback)
   static Future<Map<String, dynamic>> convertSpotifyToDeezer(String resourceType, String spotifyId) async {
     final result = await _channel.invokeMethod('convertSpotifyToDeezer', {
@@ -581,6 +608,20 @@ class PlatformBridge {
       'extension_id': extensionId,
       'settings': jsonEncode(settings),
     });
+  }
+
+  /// Invoke an action on an extension (e.g., button click handler like "startLogin")
+  /// Returns the result from the JS function
+  static Future<Map<String, dynamic>> invokeExtensionAction(String extensionId, String actionName) async {
+    _log.d('invokeExtensionAction: $extensionId.$actionName');
+    final result = await _channel.invokeMethod('invokeExtensionAction', {
+      'extension_id': extensionId,
+      'action': actionName,
+    });
+    if (result == null || (result as String).isEmpty) {
+      return {'success': true};
+    }
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   /// Search tracks using extension providers

@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Genre & Label Metadata**: Downloaded tracks now include genre and record label information
+  - Fetches genre and label from Deezer album API for each track
+  - Embeds GENRE, ORGANIZATION (label), and COPYRIGHT tags into FLAC files
+  - Works automatically when Deezer track ID is available (via ISRC matching)
+  - Supports all download services (Tidal, Qobuz, Amazon)
+
 - **MP3 Quality Option**: Optional MP3 download format with FLAC-to-MP3 conversion
   - New "Enable MP3 Option" toggle in Settings > Download > Audio Quality
   - When enabled, MP3 (320kbps) appears as a quality option alongside FLAC options

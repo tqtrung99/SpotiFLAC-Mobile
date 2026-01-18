@@ -24,6 +24,9 @@ type Metadata struct {
 	ISRC        string
 	Description string
 	Lyrics      string
+	Genre       string // Music genre (e.g., "Rock", "Pop", "Electronic")
+	Label       string // Record label (ORGANIZATION tag in Vorbis)
+	Copyright   string // Copyright information
 }
 
 // EmbedMetadata embeds metadata into a FLAC file
@@ -80,6 +83,18 @@ func EmbedMetadata(filePath string, metadata Metadata, coverPath string) error {
 	if metadata.Lyrics != "" {
 		setComment(cmt, "LYRICS", metadata.Lyrics)
 		setComment(cmt, "UNSYNCEDLYRICS", metadata.Lyrics)
+	}
+
+	if metadata.Genre != "" {
+		setComment(cmt, "GENRE", metadata.Genre)
+	}
+
+	if metadata.Label != "" {
+		setComment(cmt, "ORGANIZATION", metadata.Label)
+	}
+
+	if metadata.Copyright != "" {
+		setComment(cmt, "COPYRIGHT", metadata.Copyright)
 	}
 
 	cmtBlock := cmt.Marshal()
@@ -178,6 +193,18 @@ func EmbedMetadataWithCoverData(filePath string, metadata Metadata, coverData []
 	if metadata.Lyrics != "" {
 		setComment(cmt, "LYRICS", metadata.Lyrics)
 		setComment(cmt, "UNSYNCEDLYRICS", metadata.Lyrics)
+	}
+
+	if metadata.Genre != "" {
+		setComment(cmt, "GENRE", metadata.Genre)
+	}
+
+	if metadata.Label != "" {
+		setComment(cmt, "ORGANIZATION", metadata.Label)
+	}
+
+	if metadata.Copyright != "" {
+		setComment(cmt, "COPYRIGHT", metadata.Copyright)
 	}
 
 	cmtBlock := cmt.Marshal()

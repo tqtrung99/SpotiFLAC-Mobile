@@ -182,6 +182,9 @@ type AlbumInfoMetadata struct {
 	ReleaseDate string `json:"release_date"`
 	Artists     string `json:"artists"`
 	Images      string `json:"images"`
+	Genre       string `json:"genre,omitempty"`     // Music genre(s), comma-separated
+	Label       string `json:"label,omitempty"`     // Record label name
+	Copyright   string `json:"copyright,omitempty"` // Copyright information
 }
 
 // AlbumResponsePayload is the response for album requests

@@ -132,16 +132,25 @@ func (c *DeezerClient) convertTrack(track deezerTrack) TrackMetadata {
 	}
 }
 
+type deezerGenre struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 type deezerAlbumFull struct {
-	ID           int64          `json:"id"`
-	Title        string         `json:"title"`
-	Cover        string         `json:"cover"`
-	CoverMedium  string         `json:"cover_medium"`
-	CoverBig     string         `json:"cover_big"`
-	CoverXL      string         `json:"cover_xl"`
-	ReleaseDate  string         `json:"release_date"`
-	NbTracks     int            `json:"nb_tracks"`
-	RecordType   string         `json:"record_type"` // album, single, ep, compile
+	ID          int64  `json:"id"`
+	Title       string `json:"title"`
+	Cover       string `json:"cover"`
+	CoverMedium string `json:"cover_medium"`
+	CoverBig    string `json:"cover_big"`
+	CoverXL     string `json:"cover_xl"`
+	ReleaseDate string `json:"release_date"`
+	NbTracks    int    `json:"nb_tracks"`
+	RecordType  string `json:"record_type"` // album, single, ep, compile
+	Label       string `json:"label"`       // Record label name
+	Genres      struct {
+		Data []deezerGenre `json:"data"`
+	} `json:"genres"`
 	Artist       deezerArtist   `json:"artist"`
 	Contributors []deezerArtist `json:"contributors"`
 	Tracks       struct {
@@ -310,12 +319,23 @@ func (c *DeezerClient) GetAlbum(ctx context.Context, albumID string) (*AlbumResp
 		artistName = strings.Join(names, ", ")
 	}
 
+	// Extract genres as comma-separated string
+	var genres []string
+	for _, g := range album.Genres.Data {
+		if g.Name != "" {
+			genres = append(genres, g.Name)
+		}
+	}
+	genreStr := strings.Join(genres, ", ")
+
 	info := AlbumInfoMetadata{
 		TotalTracks: album.NbTracks,
 		Name:        album.Title,
 		ReleaseDate: album.ReleaseDate,
 		Artists:     artistName,
 		Images:      albumImage,
+		Genre:       genreStr,    // From Deezer album
+		Label:       album.Label, // From Deezer album
 	}
 
 	// Fetch ISRCs in parallel
@@ -675,6 +695,84 @@ func (c *DeezerClient) getBestAlbumImage(album deezerAlbumFull) string {
 		return album.CoverMedium
 	}
 	return album.Cover
+}
+
+// AlbumExtendedMetadata contains genre and label information from an album
+type AlbumExtendedMetadata struct {
+	Genre string // Comma-separated list of genres
+	Label string // Record label name
+}
+
+// GetAlbumExtendedMetadata fetches genre and label from a Deezer album
+// Uses the album ID from a track to fetch extended metadata
+func (c *DeezerClient) GetAlbumExtendedMetadata(ctx context.Context, albumID string) (*AlbumExtendedMetadata, error) {
+	if albumID == "" {
+		return nil, fmt.Errorf("empty album ID")
+	}
+
+	// Check cache first
+	cacheKey := fmt.Sprintf("album_meta:%s", albumID)
+	c.cacheMu.RLock()
+	if entry, ok := c.searchCache[cacheKey]; ok && !entry.isExpired() {
+		c.cacheMu.RUnlock()
+		return entry.data.(*AlbumExtendedMetadata), nil
+	}
+	c.cacheMu.RUnlock()
+
+	albumURL := fmt.Sprintf(deezerAlbumURL, albumID)
+
+	var album deezerAlbumFull
+	if err := c.getJSON(ctx, albumURL, &album); err != nil {
+		return nil, fmt.Errorf("failed to fetch album: %w", err)
+	}
+
+	// Extract genres as comma-separated string
+	var genres []string
+	for _, g := range album.Genres.Data {
+		if g.Name != "" {
+			genres = append(genres, g.Name)
+		}
+	}
+
+	result := &AlbumExtendedMetadata{
+		Genre: strings.Join(genres, ", "),
+		Label: album.Label,
+	}
+
+	// Cache the result
+	c.cacheMu.Lock()
+	c.searchCache[cacheKey] = &cacheEntry{
+		data:      result,
+		expiresAt: time.Now().Add(deezerCacheTTL),
+	}
+	c.cacheMu.Unlock()
+
+	GoLog("[Deezer] Album metadata fetched - Genre: %s, Label: %s\n", result.Genre, result.Label)
+
+	return result, nil
+}
+
+// GetTrackAlbumID fetches the album ID for a Deezer track
+func (c *DeezerClient) GetTrackAlbumID(ctx context.Context, trackID string) (string, error) {
+	trackURL := fmt.Sprintf(deezerTrackURL, trackID)
+
+	var track deezerTrack
+	if err := c.getJSON(ctx, trackURL, &track); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%d", track.Album.ID), nil
+}
+
+// GetExtendedMetadataByTrackID fetches genre and label using a Deezer track ID
+// This is a convenience function that first gets the album ID, then fetches album metadata
+func (c *DeezerClient) GetExtendedMetadataByTrackID(ctx context.Context, trackID string) (*AlbumExtendedMetadata, error) {
+	albumID, err := c.GetTrackAlbumID(ctx, trackID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get album ID: %w", err)
+	}
+
+	return c.GetAlbumExtendedMetadata(ctx, albumID)
 }
 
 func (c *DeezerClient) getJSON(ctx context.Context, endpoint string, dst interface{}) error {

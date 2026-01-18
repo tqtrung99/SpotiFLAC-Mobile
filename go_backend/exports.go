@@ -153,6 +153,10 @@ type DownloadRequest struct {
 	ItemID               string `json:"item_id"`     // Unique ID for progress tracking
 	DurationMS           int    `json:"duration_ms"` // Expected duration in milliseconds (for verification)
 	Source               string `json:"source"`      // Extension ID that provided this track (prioritize this extension)
+	// Extended metadata from Deezer for FLAC tagging
+	Genre     string `json:"genre,omitempty"`     // Music genre(s), comma-separated
+	Label     string `json:"label,omitempty"`     // Record label name
+	Copyright string `json:"copyright,omitempty"` // Copyright information
 	// Enriched IDs from Odesli/song.link - used to skip search and directly fetch
 	TidalID  string `json:"tidal_id,omitempty"`
 	QobuzID  string `json:"qobuz_id,omitempty"`
@@ -837,6 +841,37 @@ func ParseDeezerURLExport(url string) (string, error) {
 	return string(jsonBytes), nil
 }
 
+// GetDeezerExtendedMetadata fetches genre and label from Deezer album
+// trackID: Deezer track ID (will look up album ID from track)
+// Returns JSON with genre, label fields
+func GetDeezerExtendedMetadata(trackID string) (string, error) {
+	if trackID == "" {
+		return "", fmt.Errorf("empty track ID")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	client := GetDeezerClient()
+	metadata, err := client.GetExtendedMetadataByTrackID(ctx, trackID)
+	if err != nil {
+		GoLog("[Deezer] Failed to get extended metadata: %v\n", err)
+		return "", err
+	}
+
+	result := map[string]string{
+		"genre": metadata.Genre,
+		"label": metadata.Label,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
 // SearchDeezerByISRC searches for a track by ISRC on Deezer
 func SearchDeezerByISRC(isrc string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1288,6 +1323,23 @@ func DownloadWithExtensionsJSON(requestJSON string) (string, error) {
 func CleanupExtensions() {
 	manager := GetExtensionManager()
 	manager.UnloadAllExtensions()
+}
+
+// InvokeExtensionActionJSON invokes a custom action on an extension (e.g., button click handler)
+// actionName is the JS function name to call (e.g., "startLogin", "authenticate", etc.)
+func InvokeExtensionActionJSON(extensionID, actionName string) (string, error) {
+	manager := GetExtensionManager()
+	result, err := manager.InvokeAction(extensionID, actionName)
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
 }
 
 // ==================== EXTENSION AUTH API ====================

@@ -1120,6 +1120,9 @@ func downloadFromQobuz(req DownloadRequest) (QobuzDownloadResult, error) {
 		TotalTracks: req.TotalTracks,
 		DiscNumber:  req.DiscNumber, // QobuzTrack struct usually doesn't have disc info in simple search result
 		ISRC:        track.ISRC,
+		Genre:       req.Genre,     // From Deezer album metadata
+		Label:       req.Label,     // From Deezer album metadata
+		Copyright:   req.Copyright, // From Deezer album metadata
 	}
 
 	var coverData []byte

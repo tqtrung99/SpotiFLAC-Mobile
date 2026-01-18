@@ -1716,6 +1716,9 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		TotalTracks: req.TotalTracks,
 		DiscNumber:  track.VolumeNumber, // Use actual disc number from Tidal
 		ISRC:        track.ISRC,         // Use actual ISRC from Tidal
+		Genre:       req.Genre,          // From Deezer album metadata
+		Label:       req.Label,          // From Deezer album metadata
+		Copyright:   req.Copyright,      // From Deezer album metadata
 	}
 
 	var coverData []byte
