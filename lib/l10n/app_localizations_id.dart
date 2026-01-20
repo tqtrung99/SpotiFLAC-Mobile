@@ -111,6 +111,9 @@ class AppLocalizationsId extends AppLocalizations {
       'Unduhan lagu satuan akan muncul di sini';
 
   @override
+  String get historySearchHint => 'Search history...';
+
+  @override
   String get settingsTitle => 'Pengaturan';
 
   @override
@@ -433,6 +436,21 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get aboutFeatureRequestSubtitle =>
       'Sarankan fitur baru untuk aplikasi';
+
+  @override
+  String get aboutTelegramChannel => 'Telegram Channel';
+
+  @override
+  String get aboutTelegramChannelSubtitle => 'Announcements and updates';
+
+  @override
+  String get aboutTelegramChat => 'Telegram Community';
+
+  @override
+  String get aboutTelegramChatSubtitle => 'Chat with other users';
+
+  @override
+  String get aboutSocial => 'Social';
 
   @override
   String get aboutSupport => 'Dukungan';

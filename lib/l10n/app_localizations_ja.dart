@@ -110,6 +110,9 @@ class AppLocalizationsJa extends AppLocalizations {
       'Single track downloads will appear here';
 
   @override
+  String get historySearchHint => 'Search history...';
+
+  @override
   String get settingsTitle => '設定';
 
   @override
@@ -428,6 +431,21 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get aboutFeatureRequestSubtitle => 'Suggest new features for the app';
+
+  @override
+  String get aboutTelegramChannel => 'Telegram Channel';
+
+  @override
+  String get aboutTelegramChannelSubtitle => 'Announcements and updates';
+
+  @override
+  String get aboutTelegramChat => 'Telegram Community';
+
+  @override
+  String get aboutTelegramChatSubtitle => 'Chat with other users';
+
+  @override
+  String get aboutSocial => 'Social';
 
   @override
   String get aboutSupport => 'Support';

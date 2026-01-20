@@ -83,12 +83,13 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
   /// Get tracks for this album from history provider (reactive)
   List<DownloadHistoryItem> _getAlbumTracks(List<DownloadHistoryItem> allItems) {
     return allItems.where((item) {
-      // Use albumArtist if available and not empty, otherwise artistName
+// Use albumArtist if available and not empty, otherwise artistName
       final itemArtist = (item.albumArtist != null && item.albumArtist!.isNotEmpty) 
           ? item.albumArtist! 
           : item.artistName;
-      final itemKey = '${item.albumName}|$itemArtist';
-      final albumKey = '${widget.albumName}|${widget.artistName}';
+      // Use lowercase for case-insensitive matching
+      final itemKey = '${item.albumName.toLowerCase()}|${itemArtist.toLowerCase()}';
+      final albumKey = '${widget.albumName.toLowerCase()}|${widget.artistName.toLowerCase()}';
       return itemKey == albumKey;
     }).toList()
       ..sort((a, b) {

@@ -112,6 +112,9 @@ class AppLocalizationsDe extends AppLocalizations {
       'Einzelne Titel-Downloads werden hier angezeigt';
 
   @override
+  String get historySearchHint => 'Search history...';
+
+  @override
   String get settingsTitle => 'Einstellungen';
 
   @override
@@ -440,6 +443,21 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get aboutFeatureRequestSubtitle =>
       'Schlage neue Funktionen für die App vor';
+
+  @override
+  String get aboutTelegramChannel => 'Telegram Channel';
+
+  @override
+  String get aboutTelegramChannelSubtitle => 'Announcements and updates';
+
+  @override
+  String get aboutTelegramChat => 'Telegram Community';
+
+  @override
+  String get aboutTelegramChatSubtitle => 'Chat with other users';
+
+  @override
+  String get aboutSocial => 'Social';
 
   @override
   String get aboutSupport => 'Support';

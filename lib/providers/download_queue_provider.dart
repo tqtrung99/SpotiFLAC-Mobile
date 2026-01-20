@@ -1655,7 +1655,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       final quality = item.qualityOverride ?? state.audioQuality;
 
-      // Fetch extended metadata (genre, label) from Deezer if available
+// Fetch extended metadata (genre, label) from Deezer if available
       String? genre;
       String? label;
       
@@ -1665,6 +1665,20 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       }
       if (deezerTrackId == null && trackToDownload.availability?.deezerId != null) {
         deezerTrackId = trackToDownload.availability!.deezerId;
+      }
+      
+      // If no deezerTrackId but we have ISRC, try to find track via ISRC
+      if (deezerTrackId == null && trackToDownload.isrc != null && trackToDownload.isrc!.isNotEmpty) {
+        try {
+          _log.d('No Deezer ID, searching by ISRC: ${trackToDownload.isrc}');
+          final deezerResult = await PlatformBridge.searchDeezerByISRC(trackToDownload.isrc!);
+          if (deezerResult['success'] == true && deezerResult['track_id'] != null) {
+            deezerTrackId = deezerResult['track_id'].toString();
+            _log.d('Found Deezer track ID via ISRC: $deezerTrackId');
+          }
+        } catch (e) {
+          _log.w('Failed to search Deezer by ISRC: $e');
+        }
       }
       
       if (deezerTrackId != null && deezerTrackId.isNotEmpty) {

@@ -278,6 +278,12 @@ abstract class AppLocalizations {
   /// **'Single track downloads will appear here'**
   String get historyNoSinglesSubtitle;
 
+  /// Search bar placeholder in history
+  ///
+  /// In en, this message translates to:
+  /// **'Search history...'**
+  String get historySearchHint;
+
   /// Settings screen title
   ///
   /// In en, this message translates to:
@@ -871,6 +877,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Suggest new features for the app'**
   String get aboutFeatureRequestSubtitle;
+
+  /// Link to Telegram channel
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram Channel'**
+  String get aboutTelegramChannel;
+
+  /// Subtitle for Telegram channel
+  ///
+  /// In en, this message translates to:
+  /// **'Announcements and updates'**
+  String get aboutTelegramChannelSubtitle;
+
+  /// Link to Telegram chat group
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram Community'**
+  String get aboutTelegramChat;
+
+  /// Subtitle for Telegram chat
+  ///
+  /// In en, this message translates to:
+  /// **'Chat with other users'**
+  String get aboutTelegramChatSubtitle;
+
+  /// Section for social links
+  ///
+  /// In en, this message translates to:
+  /// **'Social'**
+  String get aboutSocial;
 
   /// Section for support/donation links
   ///
