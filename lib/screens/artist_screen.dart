@@ -554,11 +554,11 @@ return PopScope(
       DownloadServicePicker.show(
         context,
         onSelect: (quality, service) {
-          _fetchAndQueueAlbums(context, albums, service, quality);
+          _fetchAndQueueAlbums(albums, service, quality);
         },
       );
     } else {
-      _fetchAndQueueAlbums(context, albums, settings.defaultService, null);
+      _fetchAndQueueAlbums(albums, settings.defaultService, null);
     }
   }
 
@@ -568,7 +568,6 @@ return PopScope(
   }
 
   Future<void> _fetchAndQueueAlbums(
-    BuildContext context,
     List<ArtistAlbum> albums,
     String service,
     String? qualityOverride,
@@ -578,7 +577,10 @@ return PopScope(
     setState(() => _isFetchingDiscography = true);
 
     // Show progress dialog
-    if (!context.mounted) return;
+    if (!mounted) {
+      setState(() => _isFetchingDiscography = false);
+      return;
+    }
     
     showDialog(
       context: context,
@@ -610,7 +612,7 @@ return PopScope(
       fetchedCount++;
       
       // Update progress dialog
-      if (context.mounted) {
+      if (mounted) {
         _FetchingProgressDialog.updateProgress(context, fetchedCount, albums.length);
       }
     }
@@ -618,19 +620,19 @@ return PopScope(
     setState(() => _isFetchingDiscography = false);
 
     // Close progress dialog
-    if (context.mounted) {
+    if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
     }
 
     // Show warning if some albums failed
-    if (failedCount > 0 && context.mounted) {
+    if (failedCount > 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.discographyFailedToFetch)),
       );
     }
 
     if (allTracks.isEmpty) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.l10n.discographyNoAlbums)),
         );
@@ -655,7 +657,7 @@ return PopScope(
     }
 
     if (tracksToQueue.isEmpty) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.l10n.discographySkippedDownloaded(0, skippedCount)),
@@ -673,7 +675,7 @@ return PopScope(
     );
 
     // Show success message
-    if (context.mounted) {
+    if (mounted) {
       final message = skippedCount > 0
           ? context.l10n.discographySkippedDownloaded(tracksToQueue.length, skippedCount)
           : context.l10n.discographyAddedToQueue(tracksToQueue.length);
