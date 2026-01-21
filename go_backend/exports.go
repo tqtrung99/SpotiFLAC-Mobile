@@ -2083,8 +2083,7 @@ func ClearStoreCacheJSON() error {
 	return nil
 }
 
-// GetExtensionHomeFeedJSON calls getHomeFeed on any extension that supports it
-func GetExtensionHomeFeedJSON(extensionID string) (string, error) {
+func callExtensionFunctionJSON(extensionID, functionName string, timeout time.Duration) (string, error) {
 	manager := GetExtensionManager()
 	ext, err := manager.GetExtension(extensionID)
 	if err != nil {
@@ -2097,22 +2096,22 @@ func GetExtensionHomeFeedJSON(extensionID string) (string, error) {
 
 	provider := NewExtensionProviderWrapper(ext)
 
-	script := `
+	script := fmt.Sprintf(`
 		(function() {
-			if (typeof extension !== 'undefined' && typeof extension.getHomeFeed === 'function') {
-				return extension.getHomeFeed();
+			if (typeof extension !== 'undefined' && typeof extension.%s === 'function') {
+				return extension.%s();
 			}
 			return null;
 		})()
-	`
+	`, functionName, functionName)
 
-	result, err := RunWithTimeoutAndRecover(provider.vm, script, 60*time.Second)
+	result, err := RunWithTimeoutAndRecover(provider.vm, script, timeout)
 	if err != nil {
-		return "", fmt.Errorf("getHomeFeed failed: %w", err)
+		return "", fmt.Errorf("%s failed: %w", functionName, err)
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
-		return "", fmt.Errorf("getHomeFeed returned null")
+		return "", fmt.Errorf("%s returned null", functionName)
 	}
 
 	exported := result.Export()
@@ -2124,43 +2123,12 @@ func GetExtensionHomeFeedJSON(extensionID string) (string, error) {
 	return string(jsonBytes), nil
 }
 
+// GetExtensionHomeFeedJSON calls getHomeFeed on any extension that supports it
+func GetExtensionHomeFeedJSON(extensionID string) (string, error) {
+	return callExtensionFunctionJSON(extensionID, "getHomeFeed", 60*time.Second)
+}
+
 // GetExtensionBrowseCategoriesJSON calls getBrowseCategories on any extension that supports it
 func GetExtensionBrowseCategoriesJSON(extensionID string) (string, error) {
-	manager := GetExtensionManager()
-	ext, err := manager.GetExtension(extensionID)
-	if err != nil {
-		return "", err
-	}
-
-	if !ext.Enabled {
-		return "", fmt.Errorf("extension '%s' is disabled", extensionID)
-	}
-
-	provider := NewExtensionProviderWrapper(ext)
-
-	script := `
-		(function() {
-			if (typeof extension !== 'undefined' && typeof extension.getBrowseCategories === 'function') {
-				return extension.getBrowseCategories();
-			}
-			return null;
-		})()
-	`
-
-	result, err := RunWithTimeoutAndRecover(provider.vm, script, 30*time.Second)
-	if err != nil {
-		return "", fmt.Errorf("getBrowseCategories failed: %w", err)
-	}
-
-	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
-		return "", fmt.Errorf("getBrowseCategories returned null")
-	}
-
-	exported := result.Export()
-	jsonBytes, err := json.Marshal(exported)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	return string(jsonBytes), nil
+	return callExtensionFunctionJSON(extensionID, "getBrowseCategories", 30*time.Second)
 }

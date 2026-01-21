@@ -34,6 +34,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   bool _isTyping = false;
   final FocusNode _searchFocusNode = FocusNode();
   String? _lastSearchQuery;
+  late final ProviderSubscription<TrackState> _trackStateSub;
+  late final ProviderSubscription<bool> _extensionInitSub;
   
   /// Debounce timer for live search (extension-only feature)
   Timer? _liveSearchDebounce;
@@ -58,16 +60,32 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     super.initState();
     _urlController.addListener(_onSearchChanged);
     _searchFocusNode.addListener(_onSearchFocusChanged);
+    
+    _trackStateSub = ref.listenManual<TrackState>(trackProvider, (previous, next) {
+      _onTrackStateChanged(previous, next);
+      if (previous != null && previous.isLoading && !next.isLoading && next.error == null) {
+        _navigateToDetailIfNeeded();
+      }
+    });
+    
+    _extensionInitSub = ref.listenManual<bool>(
+      extensionProvider.select((s) => s.isInitialized),
+      (previous, next) {
+        if (next == true && previous != true) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _fetchExploreIfNeeded();
+          });
+        }
+      },
+    );
   }
   
   void _fetchExploreIfNeeded() {
     final extState = ref.read(extensionProvider);
     final exploreState = ref.read(exploreProvider);
-    // Check if any extension with homeFeed capability is enabled
     final hasHomeFeedExtension = extState.extensions.any(
       (e) => e.enabled && e.hasHomeFeed,
     );
-    // Fetch if any homeFeed extension is enabled and we don't have content yet
     if (hasHomeFeedExtension && !exploreState.hasContent && !exploreState.isLoading) {
       ref.read(exploreProvider.notifier).fetchHomeFeed();
     }
@@ -76,6 +94,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   @override
   void dispose() {
     _liveSearchDebounce?.cancel();
+    _trackStateSub.close();
+    _extensionInitSub.close();
     _urlController.removeListener(_onSearchChanged);
     _searchFocusNode.removeListener(_onSearchFocusChanged);
     _urlController.dispose();
@@ -123,14 +143,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     } else if (text.isEmpty && _isTyping) {
       setState(() => _isTyping = false);
       _liveSearchDebounce?.cancel();
-      // Don't clear provider here - it causes focus issues
-      // Provider will be cleared when user explicitly clears or navigates away
       return;
     }
     
-    // Live search - only for extensions
     if (_isLiveSearchEnabled() && text.length >= _minLiveSearchChars) {
-      // Skip if it's a URL (let user press enter for URLs)
       if (text.startsWith('http') || text.startsWith('spotify:')) return;
       
       _liveSearchDebounce?.cancel();
@@ -156,7 +172,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     } finally {
       _isLiveSearchInProgress = false;
       
-      // Check if there's a pending query that was queued while we were searching
       final pending = _pendingLiveSearchQuery;
       _pendingLiveSearchQuery = null;
       
@@ -386,7 +401,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
           },
         );
       } else {
-        // Use default settings without quality picker
         final confirmed = await showDialog<bool>(
           context: this.context,
           builder: (dialogCtx) => AlertDialog(
@@ -427,32 +441,12 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   Widget build(BuildContext context) {
     super.build(context);
     
-    ref.listen<TrackState>(trackProvider, (previous, next) {
-      _onTrackStateChanged(previous, next);
-      if (previous != null && previous.isLoading && !next.isLoading && next.error == null) {
-        _navigateToDetailIfNeeded();
-      }
-    });
-    
-    // Listen for extension state changes to trigger explore fetch
-    ref.listen(extensionProvider.select((s) => s.isInitialized), (previous, next) {
-      if (next == true && previous != true) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _fetchExploreIfNeeded();
-        });
-      }
-    });
-    
     final tracks = ref.watch(trackProvider.select((s) => s.tracks));
     final searchArtists = ref.watch(trackProvider.select((s) => s.searchArtists));
     final isLoading = ref.watch(trackProvider.select((s) => s.isLoading));
     final error = ref.watch(trackProvider.select((s) => s.error));
     final hasSearchedBefore = ref.watch(settingsProvider.select((s) => s.hasSearchedBefore));
     
-    ref.watch(extensionProvider.select((s) => s.isInitialized));
-    ref.watch(extensionProvider.select((s) => s.extensions));
-    
-    // Explore state
     final exploreState = ref.watch(exploreProvider);
     final hasHomeFeedExtension = ref.watch(extensionProvider.select((s) => 
       s.extensions.any((e) => e.enabled && e.hasHomeFeed)
@@ -462,15 +456,15 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     final hasActualResults = tracks.isNotEmpty || (searchArtists != null && searchArtists.isNotEmpty);
     final isShowingRecentAccess = ref.watch(trackProvider.select((s) => s.isShowingRecentAccess));
     final hasResults = isShowingRecentAccess || hasActualResults || isLoading;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final topPadding = MediaQuery.of(context).padding.top;
+    final mediaQuery = MediaQuery.of(context);
+    final screenHeight = mediaQuery.size.height;
+    final topPadding = mediaQuery.padding.top;
     final historyItems = ref.watch(downloadHistoryProvider.select((s) => s.items));
     final recentAccessItems = ref.watch(recentAccessProvider.select((s) => s.items));
     
     final hasRecentItems = recentAccessItems.isNotEmpty || historyItems.isNotEmpty;
     final showRecentAccess = isShowingRecentAccess && hasRecentItems && !hasActualResults && !isLoading;
     
-    // Show explore only when no search results and not showing recent access
     final showExplore = !hasActualResults && !isLoading && !showRecentAccess && hasHomeFeedExtension && exploreState.hasContent;
     
     if (hasActualResults && isShowingRecentAccess) {
@@ -619,11 +613,9 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
             ),
           ),
           
-          // Explore sections (Spotify Home Feed)
           if (showExplore)
             ..._buildExploreSections(exploreState, colorScheme),
           
-          // Loading indicator for explore
           if (hasHomeFeedExtension && !hasActualResults && !isLoading && exploreState.isLoading)
             const SliverToBoxAdapter(
               child: Padding(
@@ -720,45 +712,44 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   }
 
   List<Widget> _buildExploreSections(ExploreState exploreState, ColorScheme colorScheme) {
-    final slivers = <Widget>[];
+    final greeting = exploreState.greeting;
+    final hasGreeting = greeting != null && greeting.isNotEmpty;
+    final sections = exploreState.sections;
+    final sectionOffset = hasGreeting ? 1 : 0;
+    final totalCount = sections.length + sectionOffset + 1; // + bottom padding
     
-    // Greeting (pull-to-refresh handles refresh)
-    if (exploreState.greeting != null && exploreState.greeting!.isNotEmpty) {
-      slivers.add(
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Text(
-              exploreState.greeting!,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+    return [
+      SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (hasGreeting && index == 0) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text(
+                  greeting!,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              );
+            }
+            
+            final sectionIndex = index - sectionOffset;
+            if (sectionIndex < sections.length) {
+              return _buildExploreSection(sections[sectionIndex], colorScheme);
+            }
+            
+            // Bottom padding
+            return const SizedBox(height: 16);
+          },
+          childCount: totalCount,
         ),
-      );
-    }
-    
-    // Build each section
-    for (final section in exploreState.sections) {
-      slivers.add(
-        SliverToBoxAdapter(
-          child: _buildExploreSection(section, colorScheme),
-        ),
-      );
-    }
-    
-    // Add some bottom padding
-    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
-    
-    return slivers;
+      ),
+    ];
   }
   
   Widget _buildExploreSection(ExploreSection section, ColorScheme colorScheme) {
-    // Check if this is a YT Music "Quick picks" style section (vertical list)
-    final isYTMusicQuickPicks = section.items.isNotEmpty && 
-        section.items.first.providerId == 'ytmusic-spotiflac' &&
-        section.items.every((item) => item.type == 'track');
+    final isYTMusicQuickPicks = _isYTMusicQuickPicksSection(section);
     
     if (isYTMusicQuickPicks) {
       return _buildYTMusicQuickPicksSection(section, colorScheme);
@@ -790,6 +781,19 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
         ),
       ],
     );
+  }
+  
+  bool _isYTMusicQuickPicksSection(ExploreSection section) {
+    if (section.items.isEmpty) return false;
+    if (section.items.first.providerId != 'ytmusic-spotiflac') return false;
+    
+    for (final item in section.items) {
+      if (item.type != 'track') {
+        return false;
+      }
+    }
+    
+    return true;
   }
   
   /// Build YT Music "Quick picks" style swipeable pages section
@@ -902,8 +906,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     
     switch (item.type) {
       case 'track':
-        // Show bottom sheet with track info and download option
         _showTrackBottomSheet(item);
+        return;
       case 'album':
         Navigator.push(context, MaterialPageRoute(
           builder: (context) => ExtensionAlbumScreen(
@@ -913,6 +917,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
             coverUrl: item.coverUrl,
           ),
         ));
+        return;
       case 'playlist':
         Navigator.push(context, MaterialPageRoute(
           builder: (context) => ExtensionPlaylistScreen(
@@ -922,6 +927,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
             coverUrl: item.coverUrl,
           ),
         ));
+        return;
       case 'artist':
         Navigator.push(context, MaterialPageRoute(
           builder: (context) => ExtensionArtistScreen(
@@ -931,10 +937,12 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
             coverUrl: item.coverUrl,
           ),
         ));
+        return;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${item.type}: ${item.name}')),
         );
+        return;
     }
   }
 
@@ -951,7 +959,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
             Container(
               margin: const EdgeInsets.only(top: 12),
               width: 40,
@@ -961,7 +968,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Track info
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -1013,7 +1019,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
               ),
             ),
             const Divider(height: 1),
-            // Actions
             ListTile(
               leading: Icon(Icons.download, color: colorScheme.primary),
               title: Text(context.l10n.downloadTitle),
@@ -1027,7 +1032,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
               title: const Text('Go to Album'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to album - we'll use the track ID to search
                 _navigateToTrackAlbum(item);
               },
             ),
@@ -1041,17 +1045,15 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   Future<void> _downloadExploreTrack(ExploreItem item) async {
     final settings = ref.read(settingsProvider);
     
-    // Create a Track object from ExploreItem
-    // Pass spotify ID as ISRC so enrichment can look it up via SongLink/Deezer
     final track = Track(
       id: item.id,
       name: item.name,
       artistName: item.artists,
       albumName: item.albumName ?? '',
-      duration: 0,
+      duration: item.durationMs ~/ 1000,
       trackNumber: 1,
       discNumber: 1,
-      isrc: item.id, // Pass Spotify ID - enrichment will detect and lookup real ISRC
+      isrc: item.id,
       releaseDate: null,
       coverUrl: item.coverUrl,
       source: item.providerId ?? 'spotify-web',
@@ -1100,7 +1102,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     List<DownloadHistoryItem> historyItems,
     ColorScheme colorScheme,
   ) {
-    // Group download history by album
     final albumGroups = <String, List<DownloadHistoryItem>>{};
     for (final h in historyItems) {
       final artistForKey = (h.albumArtist != null && h.albumArtist!.isNotEmpty) 
@@ -1161,7 +1162,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
       return true;
     }).take(10).toList();
     
-    // Check if there are hidden downloads
     final hasHiddenDownloads = hiddenIds.isNotEmpty;
     
     return Padding(
@@ -1959,7 +1959,6 @@ class _SearchProviderDropdown extends ConsumerWidget {
       currentExt = searchProviders.where((e) => e.id == currentProvider).firstOrNull;
     }
     
-    // Determine display icon
     IconData displayIcon = Icons.search;
     String? iconPath;
     if (currentExt != null) {
@@ -2037,7 +2036,6 @@ class _SearchProviderDropdown extends ConsumerWidget {
           ),
         ),
         if (searchProviders.isNotEmpty) const PopupMenuDivider(),
-        // Extension providers
         ...searchProviders.map((ext) => PopupMenuItem<String>(
           value: ext.id,
           child: Row(
@@ -2900,7 +2898,6 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
             ),
           ),
         ),
-        // Swipeable pages of tracks
         SizedBox(
           height: widget.itemsPerPage * 64.0,
           child: PageView.builder(
@@ -2920,7 +2917,6 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
             },
           ),
         ),
-        // Page indicator dots
         if (widget.totalPages > 1)
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -2950,12 +2946,11 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
   Widget _buildQuickPickItem(ExploreItem item) {
     return InkWell(
       onTap: () => widget.onItemTap(item),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            // Album art thumbnail
-            ClipRRect(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: item.coverUrl != null && item.coverUrl!.isNotEmpty
                   ? CachedNetworkImage(
@@ -2989,7 +2984,6 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
                     ),
             ),
             const SizedBox(width: 12),
-            // Title and artist
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3015,7 +3009,6 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
                 ],
               ),
             ),
-            // Menu button
             IconButton(
               icon: Icon(
                 Icons.more_vert,

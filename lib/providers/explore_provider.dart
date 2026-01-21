@@ -17,6 +17,7 @@ class ExploreItem {
   final String? providerId;
   final String? albumId;
   final String? albumName;
+  final int durationMs;
 
   const ExploreItem({
     required this.id,
@@ -29,6 +30,7 @@ class ExploreItem {
     this.providerId,
     this.albumId,
     this.albumName,
+    this.durationMs = 0,
   });
 
   factory ExploreItem.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class ExploreItem {
       providerId: json['provider_id'] as String?,
       albumId: json['album_id'] as String?,
       albumName: json['album_name'] as String?,
+      durationMs: json['duration_ms'] as int? ?? 0,
     );
   }
 }
@@ -125,6 +128,11 @@ class ExploreNotifier extends Notifier<ExploreState> {
       _log.d('Using cached home feed');
       return;
     }
+    
+    if (state.isLoading) {
+      _log.d('Home feed fetch already in progress');
+      return;
+    }
 
     state = state.copyWith(isLoading: true, error: null);
 
@@ -133,12 +141,21 @@ class ExploreNotifier extends Notifier<ExploreState> {
       final extState = ref.read(extensionProvider);
       _log.d('Extensions count: ${extState.extensions.length}');
       
-      // Look for extensions with homeFeed capability (prefer spotify-web, then ytmusic)
-      final homeFeedExtensions = extState.extensions.where(
-        (e) => e.enabled && e.hasHomeFeed,
-      ).toList();
+      // Look for extensions with homeFeed capability (prefer spotify-web)
+      Extension? targetExt;
+      for (final extension in extState.extensions) {
+        if (!extension.enabled || !extension.hasHomeFeed) {
+          continue;
+        }
+        if (targetExt == null || extension.id == 'spotify-web') {
+          targetExt = extension;
+          if (extension.id == 'spotify-web') {
+            break;
+          }
+        }
+      }
       
-      if (homeFeedExtensions.isEmpty) {
+      if (targetExt == null) {
         _log.w('No extension with homeFeed capability found');
         state = state.copyWith(
           isLoading: false,
@@ -147,16 +164,8 @@ class ExploreNotifier extends Notifier<ExploreState> {
         return;
       }
       
-      // Prefer spotify-web if available, otherwise use first available
-      var targetExt = homeFeedExtensions.firstWhere(
-        (e) => e.id == 'spotify-web',
-        orElse: () => homeFeedExtensions.first,
-      );
-
       _log.i('Fetching home feed from ${targetExt.id}...');
       final result = await PlatformBridge.getExtensionHomeFeed(targetExt.id);
-      
-      _log.d('getExtensionHomeFeed result: $result');
 
       if (result == null) {
         state = state.copyWith(
@@ -167,6 +176,7 @@ class ExploreNotifier extends Notifier<ExploreState> {
       }
 
       final success = result['success'] as bool? ?? false;
+      _log.d('getExtensionHomeFeed success=$success');
       if (!success) {
         final error = result['error'] as String? ?? 'Unknown error';
         state = state.copyWith(
