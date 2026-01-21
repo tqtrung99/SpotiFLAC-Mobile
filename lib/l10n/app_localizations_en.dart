@@ -2082,4 +2082,70 @@ class AppLocalizationsEn extends AppLocalizations {
   String errorGeneric(String message) {
     return 'Error: $message';
   }
+
+  @override
+  String get discographyDownload => 'Download Discography';
+
+  @override
+  String get discographyDownloadAll => 'Download All';
+
+  @override
+  String discographyDownloadAllSubtitle(int count, int albumCount) {
+    return '$count tracks from $albumCount releases';
+  }
+
+  @override
+  String get discographyAlbumsOnly => 'Albums Only';
+
+  @override
+  String discographyAlbumsOnlySubtitle(int count, int albumCount) {
+    return '$count tracks from $albumCount albums';
+  }
+
+  @override
+  String get discographySinglesOnly => 'Singles & EPs Only';
+
+  @override
+  String discographySinglesOnlySubtitle(int count, int albumCount) {
+    return '$count tracks from $albumCount singles';
+  }
+
+  @override
+  String get discographySelectAlbums => 'Select Albums...';
+
+  @override
+  String get discographySelectAlbumsSubtitle =>
+      'Choose specific albums or singles';
+
+  @override
+  String get discographyFetchingTracks => 'Fetching tracks...';
+
+  @override
+  String discographyFetchingAlbum(int current, int total) {
+    return 'Fetching $current of $total...';
+  }
+
+  @override
+  String discographySelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get discographyDownloadSelected => 'Download Selected';
+
+  @override
+  String discographyAddedToQueue(int count) {
+    return 'Added $count tracks to queue';
+  }
+
+  @override
+  String discographySkippedDownloaded(int added, int skipped) {
+    return '$added added, $skipped already downloaded';
+  }
+
+  @override
+  String get discographyNoAlbums => 'No albums available';
+
+  @override
+  String get discographyFailedToFetch => 'Failed to fetch some albums';
 }

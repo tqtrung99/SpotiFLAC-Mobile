@@ -2095,4 +2095,70 @@ class AppLocalizationsId extends AppLocalizations {
   String errorGeneric(String message) {
     return 'Error: $message';
   }
+
+  @override
+  String get discographyDownload => 'Unduh Diskografi';
+
+  @override
+  String get discographyDownloadAll => 'Unduh Semua';
+
+  @override
+  String discographyDownloadAllSubtitle(int count, int albumCount) {
+    return '$count lagu dari $albumCount rilis';
+  }
+
+  @override
+  String get discographyAlbumsOnly => 'Album Saja';
+
+  @override
+  String discographyAlbumsOnlySubtitle(int count, int albumCount) {
+    return '$count lagu dari $albumCount album';
+  }
+
+  @override
+  String get discographySinglesOnly => 'Single & EP Saja';
+
+  @override
+  String discographySinglesOnlySubtitle(int count, int albumCount) {
+    return '$count lagu dari $albumCount single';
+  }
+
+  @override
+  String get discographySelectAlbums => 'Pilih Album...';
+
+  @override
+  String get discographySelectAlbumsSubtitle =>
+      'Pilih album atau single tertentu';
+
+  @override
+  String get discographyFetchingTracks => 'Mengambil lagu...';
+
+  @override
+  String discographyFetchingAlbum(int current, int total) {
+    return 'Mengambil $current dari $total...';
+  }
+
+  @override
+  String discographySelectedCount(int count) {
+    return '$count dipilih';
+  }
+
+  @override
+  String get discographyDownloadSelected => 'Unduh yang Dipilih';
+
+  @override
+  String discographyAddedToQueue(int count) {
+    return 'Menambahkan $count lagu ke antrian';
+  }
+
+  @override
+  String discographySkippedDownloaded(int added, int skipped) {
+    return '$added ditambahkan, $skipped sudah diunduh';
+  }
+
+  @override
+  String get discographyNoAlbums => 'Tidak ada album tersedia';
+
+  @override
+  String get discographyFailedToFetch => 'Gagal mengambil beberapa album';
 }

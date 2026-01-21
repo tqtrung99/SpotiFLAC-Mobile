@@ -19,7 +19,6 @@ class PaletteService {
       return null;
     }
 
-    // Check cache first
     if (_colorCache.containsKey(imageUrl)) {
       return _colorCache[imageUrl];
     }
@@ -27,8 +26,8 @@ class PaletteService {
     try {
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         CachedNetworkImageProvider(imageUrl),
-        size: const Size(64, 64),  // Small size for speed
-        maximumColorCount: 8,       // Fewer colors for speed
+        size: const Size(64, 64),
+        maximumColorCount: 8,
       );
       
       final color = paletteGenerator.dominantColor?.color ??

@@ -3789,6 +3789,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Error: {message}'**
   String errorGeneric(String message);
+
+  /// Button - download artist discography
+  ///
+  /// In en, this message translates to:
+  /// **'Download Discography'**
+  String get discographyDownload;
+
+  /// Option - download entire discography
+  ///
+  /// In en, this message translates to:
+  /// **'Download All'**
+  String get discographyDownloadAll;
+
+  /// Subtitle showing total tracks and albums
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks from {albumCount} releases'**
+  String discographyDownloadAllSubtitle(int count, int albumCount);
+
+  /// Option - download only albums
+  ///
+  /// In en, this message translates to:
+  /// **'Albums Only'**
+  String get discographyAlbumsOnly;
+
+  /// Subtitle showing album tracks count
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks from {albumCount} albums'**
+  String discographyAlbumsOnlySubtitle(int count, int albumCount);
+
+  /// Option - download only singles
+  ///
+  /// In en, this message translates to:
+  /// **'Singles & EPs Only'**
+  String get discographySinglesOnly;
+
+  /// Subtitle showing singles tracks count
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks from {albumCount} singles'**
+  String discographySinglesOnlySubtitle(int count, int albumCount);
+
+  /// Option - manually select albums to download
+  ///
+  /// In en, this message translates to:
+  /// **'Select Albums...'**
+  String get discographySelectAlbums;
+
+  /// Subtitle for select albums option
+  ///
+  /// In en, this message translates to:
+  /// **'Choose specific albums or singles'**
+  String get discographySelectAlbumsSubtitle;
+
+  /// Progress - fetching album tracks
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching tracks...'**
+  String get discographyFetchingTracks;
+
+  /// Progress - fetching specific album
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching {current} of {total}...'**
+  String discographyFetchingAlbum(int current, int total);
+
+  /// Selection count badge
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String discographySelectedCount(int count);
+
+  /// Button - download selected albums
+  ///
+  /// In en, this message translates to:
+  /// **'Download Selected'**
+  String get discographyDownloadSelected;
+
+  /// Snackbar - tracks added from discography
+  ///
+  /// In en, this message translates to:
+  /// **'Added {count} tracks to queue'**
+  String discographyAddedToQueue(int count);
+
+  /// Snackbar - with skipped tracks count
+  ///
+  /// In en, this message translates to:
+  /// **'{added} added, {skipped} already downloaded'**
+  String discographySkippedDownloaded(int added, int skipped);
+
+  /// Error - no albums found for artist
+  ///
+  /// In en, this message translates to:
+  /// **'No albums available'**
+  String get discographyNoAlbums;
+
+  /// Error - some albums failed to load
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to fetch some albums'**
+  String get discographyFailedToFetch;
 }
 
 class _AppLocalizationsDelegate
